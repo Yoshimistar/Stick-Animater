@@ -278,6 +278,7 @@
           <button id="genRedoAll" class="small" style="width:100%;margin-top:6px">全コマ作り直し</button>
           <label class="check"><input type="checkbox" id="genChain">前のコマの生成画像も参考にする</label>
           <label class="check"><input type="checkbox" id="genAlign" checked>生成画像の位置と大きさを原画に合わせる</label>
+          <div class="row"><span style="font-size:12px">原画とずれていたら作り直す回数（最大）</span><select id="genTries"><option value="1">1回</option><option value="2">2回</option><option value="3" selected>3回</option><option value="4">4回</option></select></div>
           <p id="genGlobal" class="note"></p>
         </section>
         <section class="box">
@@ -1179,11 +1180,35 @@ function saveGenSettings() { try { localStorage.setItem('sa_gen', JSON.stringify
 $('genGreen').onchange = () => { saveGenSettings(); genImgs.forEach(o => o.keyed = null); thumbs.clear(); renderStripSoon(); draw(); };
 
 // 送る範囲：作業キャンバスを対応アスペクト比まで広げた箱
-function genBox() {
-  const A = area(), r = A.w / A.h; let best = ASPECTS[0];
+// 送る範囲：キャラの周りに余白を足し、対応アスペクト比まで広げた箱（キャラが画面いっぱいに近いほど崩れにくい）
+function genBox(i) {
+  let A = area();
+  if (i > 0) {
+    const pc = renderPuppetBox(i, A, false, 512), bb = contentBBox(pc), ps = A.w / pc.width;
+    if (bb) { const x0 = A.x + bb.x0 * ps, y0 = A.y + bb.y0 * ps, w = (bb.x1 - bb.x0) * ps, h = (bb.y1 - bb.y0) * ps, m = Math.max(w, h) * 0.12;
+      A = { x: x0 - m, y: y0 - m, w: w + m * 2, h: h + m * 2 }; }
+  }
+  const r = A.w / A.h; let best = ASPECTS[0];
   for (const a of ASPECTS) if (Math.abs(Math.log(a[1] / r)) < Math.abs(Math.log(best[1] / r))) best = a;
   let w = A.w, h = A.h; if (best[1] > r) w = h * best[1]; else h = w / best[1];
   return { x: A.x - (w - A.w) / 2, y: A.y - (h - A.h) / 2, w, h, aspect: best[0] };
+}
+// 原画（切り絵）と生成画像のシルエットを比べる：一致度（IoU）と差分画像
+async function silhouetteCheck(i, url, box, fit) {
+  const R = 320, s = R / Math.max(box.w, box.h), W = Math.round(box.w * s), H = Math.round(box.h * s);
+  const pc = mkCanvas(W, H), pg = pc.getContext('2d'); pg.setTransform(s, 0, 0, s, -box.x * s, -box.y * s); drawPuppet(pg, S.frames[i].pose);
+  const keyed = chromaKey(await loadImage(url)), b = fit || box, gc = mkCanvas(W, H);
+  gc.getContext('2d').drawImage(keyed, (b.x - box.x) * s, (b.y - box.y) * s, b.w * s, b.h * s);
+  const a = pg.getImageData(0, 0, W, H).data, c = gc.getContext('2d').getImageData(0, 0, W, H).data;
+  const dc = mkCanvas(W, H), dg = dc.getContext('2d'), dd = dg.createImageData(W, H), o = dd.data; let inter = 0, uni = 0, miss = 0, extra = 0;
+  for (let k = 0; k < W * H; k++) {
+    const p = a[k * 4 + 3] > 40, q = c[k * 4 + 3] > 40;
+    if (p && q) inter++; if (p || q) uni++;
+    const j = k * 4; o[j + 3] = 255;
+    if (p && q) { o[j] = o[j + 1] = o[j + 2] = 150; } else if (p) { o[j] = 255; o[j + 1] = 30; o[j + 2] = 30; miss++; } else if (q) { o[j] = 40; o[j + 1] = 90; o[j + 2] = 255; extra++; } else { o[j] = o[j + 1] = o[j + 2] = 255; }
+  }
+  dg.putImageData(dd, 0, 0);
+  return { score: uni ? inter / uni : 0, diff: dc, miss: miss / Math.max(1, uni), extra: extra / Math.max(1, uni) };
 }
 function renderPuppetBox(i, box, green, maxSide = 1024) {
   const s = Math.min(1, maxSide / Math.max(box.w, box.h)), c = mkCanvas(Math.round(box.w * s), Math.round(box.h * s)), g = c.getContext('2d');
@@ -1263,6 +1288,7 @@ async function mockGemini(parts, signal) {
   if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
   const p = parts.find(x => typeof x !== 'string'), im = await loadImage(`data:${p.mime};base64,${p.data}`);
   const c = mkCanvas(im.width, im.height), g = c.getContext('2d'); g.drawImage(im, 0, 0);
+  if (/mock=bad/.test(location.search) && !/did NOT match/.test(parts[0])) { g.fillStyle = '#00ff00'; g.fillRect(0, 0, c.width, c.height * 0.55); }
   g.globalCompositeOperation = 'source-atop'; g.fillStyle = '#4060ff30'; g.fillRect(0, 0, c.width, c.height);
   g.globalCompositeOperation = 'source-over';
   return c.toDataURL('image/png');
@@ -1316,6 +1342,14 @@ async function alignBox(i, url, box) {
     return { x: (P.x0 + P.x1) / 2 - ((gb.x0 + gb.x1) / 2) * k, y: P.y1 - gb.y1 * k, w: W, h: H, aspect: box.aspect };
   } catch { return null; }
 }
+async function buildRetryParts(i, box, green, prev) {
+  const t = `EDIT IMAGE 1 again. Your previous attempt (IMAGE 2) did NOT match IMAGE 1: only ${Math.round(prev.score * 100)}% of the silhouette overlaps.\n` +
+    `IMAGE 3 is a difference map between IMAGE 1 and IMAGE 2: GRAY = correct, RED = parts of the character that are in IMAGE 1 but missing from your attempt, BLUE = parts in your attempt that are not in IMAGE 1.\n` +
+    `IMAGE 4 is the character reference (standing pose), only for colors and costume details.\n` +
+    `Start again from IMAGE 1, not from IMAGE 2. The whole character from the top of the head and wings down to the feet must be visible, in exactly the same place, size and pose as in IMAGE 1. ` +
+    `Only repair the seams at the joints (connect separated parts, smooth overlaps, fill small gaps). There must be no red or blue areas this time.\n\nRULES:\n${rulesText(i, green)}`;
+  const parts = [t, partOf(renderPuppetBox(i, box, green)), partOf(prev.url), partOf(prev.diff), partOf(standRef(green))]; parts.aspect = box.aspect; return parts;
+}
 async function buildFixParts(i, v, fix, green) {
   const t = `EDIT this finished sprite frame. IMAGE 1 is the current frame ${i + 1}. IMAGE 2 is the character reference; keep the character identical to it.\n` +
     `Apply ONLY this change, and keep everything else (pose, size, position in the canvas, framing, colors, style, background) unchanged:\n${fix}\n\nRULES:\n${rulesText(i, green)}`;
@@ -1326,25 +1360,39 @@ async function runGen(i, mode, signal) {
   const f = S.frames[i], green = genSettings().green, fix = $('genFix').value.trim();
   const v0 = curVer(i);
   if (mode === 'fix' && (!v0 || !fix)) { toast(v0 ? '直したいところを書いてください' : '先にこのコマを生成してください'); return false; }
-  const box = mode === 'fix' ? v0.box : genBox(), sig = poseSig(f);
-  genBusyIdx.add(i); renderGenSide(); draw();
+  const box = mode === 'fix' ? v0.box : genBox(i), sig = poseSig(f);
+  const tries = mode === 'fix' || !green ? 1 : +$('genTries').value, goal = 0.8;
+  genBusyIdx.add(i); genNote[i] = ''; renderGenSide(); draw();
   try {
-    const parts = mode === 'fix' ? await buildFixParts(i, v0, fix, green) : await buildGenParts(i, box, green);
-    const url = await callGemini(parts, signal);
+    // 生成 → 原画とシルエットを比べる → ずれていれば差分を見せて作り直し（最大 tries 回、一番近いものを採用）
+    let best = null;
+    for (let t = 0; t < tries; t++) {
+      if (signal?.aborted) break;
+      genNote[i] = t === 0 ? '' : `${t + 1}回目：一致度 ${Math.round(best.score * 100)}% なので、ずれを見せて作り直し中…`; renderGenSide();
+      const parts = mode === 'fix' ? await buildFixParts(i, v0, fix, green) : !best ? await buildGenParts(i, box, green) : await buildRetryParts(i, box, green, best);
+      const url = await callGemini(parts, signal);
+      const fit = mode === 'fix' ? (v0.fit || null) : await alignBox(i, url, box);
+      const chk = mode === 'fix' || !green ? null : await silhouetteCheck(i, url, box, fit).catch(() => null);
+      const cand = { url, fit, score: chk ? chk.score : null, diff: chk?.diff, tries: t + 1 };
+      if (!best || (cand.score ?? 0) > (best.score ?? 0)) best = { ...cand }; else best.tries = t + 1;
+      if (cand.score == null || cand.score >= goal) break;
+    }
+    if (!best) return false;
+    const { url, fit } = best;
     const id = newGenId(); S.gen[id] = url;
-    const fit = mode === 'fix' ? (v0.fit || null) : await alignBox(i, url, box);
     const fr = S.frames.indexOf(f) >= 0 ? f : null; if (!fr) return false;   // 生成中にコマが消された
     pushUndo();
     fr.ai = fr.ai || { v: [], cur: -1 };
-    fr.ai.v = fr.ai.v.slice(0, fr.ai.cur + 1); fr.ai.v.push({ id, box: { x: box.x, y: box.y, w: box.w, h: box.h, aspect: box.aspect }, fit, sig: mode === 'fix' ? v0.sig : sig }); fr.ai.cur = fr.ai.v.length - 1;
+    fr.ai.v = fr.ai.v.slice(0, fr.ai.cur + 1); fr.ai.v.push({ id, box: { x: box.x, y: box.y, w: box.w, h: box.h, aspect: box.aspect }, fit, score: best.score, tries: best.tries, sig: mode === 'fix' ? v0.sig : sig }); fr.ai.cur = fr.ai.v.length - 1;
     if (mode === 'fix') $('genFix').value = '';
     thumbDirty(S.frames.indexOf(fr)); afterChange();
     return true;
   } catch (e) {
     if (e.name !== 'AbortError') { toast(`コマ ${i + 1}：${e.message}`, 6000); $('genGlobal').textContent = e.message; }
     return false;
-  } finally { genBusyIdx.delete(i); renderGenSide(); draw(); }
+  } finally { genBusyIdx.delete(i); genNote[i] = ''; renderGenSide(); draw(); }
 }
+const genNote = {};
 async function runGenBatch(list) {
   if (!list.length) return toast('生成するコマがありません');
   if (!MOCK && !genSettings().key) return toast('「AI の設定」に Gemini API キーを入力してください');
@@ -1366,8 +1414,8 @@ function renderGenSide() {
   $('genVer').textContent = a && a.v.length ? `${a.cur + 1} / ${a.v.length}` : '—';
   $('genVerPrev').disabled = !a || a.cur <= 0; $('genVerNext').disabled = !a || a.cur >= a.v.length - 1;
   $('genRawBox').hidden = !v || busy; if (v && $('genRaw').dataset.id !== v.id) { $('genRaw').src = S.gen[v.id]; $('genRaw').dataset.id = v.id; }
-  $('genState').textContent = i === 0 ? '1コマ目は立ち絵そのものを使います。' : busy ? '生成中です…' : !v ? 'まだ生成していません（今は切り絵の原画です）。' :
-    genStale(i) ? '生成した後に棒人間が変わりました。作り直すと今のポーズになります。' : '生成済みです。';
+  $('genState').textContent = i === 0 ? '1コマ目は立ち絵そのものを使います。' : busy ? (genNote[i] || '生成中です…') : !v ? 'まだ生成していません（今は切り絵の原画です）。' :
+    genStale(i) ? '生成した後に棒人間が変わりました。作り直すと今のポーズになります。' : v.score != null ? `生成済みです。原画との一致度 ${Math.round(v.score * 100)}%${v.tries > 1 ? `（${v.tries}回試して一番近いもの）` : ''}${v.score < 0.8 ? '。まだずれているので、作り直すかプロンプトで直してください。' : ''}` : '生成済みです。';
   $('genOne').textContent = v ? 'このコマを作り直す' : 'このコマを生成';
   ['genOne', 'genFixBtn', 'genToPose'].forEach(id => $(id).disabled = i === 0 || busy);
   $('genFixBtn').disabled ||= !v; $('genDrop').disabled = !v || busy;
