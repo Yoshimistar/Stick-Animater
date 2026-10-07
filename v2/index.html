@@ -1,0 +1,828 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>棒人間アニメ v2 検証版</title>
+<style>
+  :root {
+    --desk: #15171c; --panel: #1e2128; --panel2: #272b34; --line: #343a46;
+    --ink: #ebe7df; --muted: #9a9fab; --accent: #ff8a3d; --accent-ink: #1d0e00;
+    --ok: #57d68d; --err: #ff6161; --warn: #ffc857;
+    --font-body: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--desk); color: var(--ink); font: 14px/1.5 var(--font-body); -webkit-text-size-adjust: 100%; }
+  header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 6px 12px; padding-top: max(6px, env(safe-area-inset-top)); background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 16px; }
+  header h1 b { color: var(--accent); }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav button { border-radius: 999px; }
+  nav button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  #busy { color: var(--warn); font-size: 12px; }
+  main { padding: 12px; max-width: 1280px; margin: 0 auto; }
+  button, .btn { display: inline-block; background: var(--panel2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 12px; font: inherit; cursor: pointer; touch-action: manipulation; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.pri { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  button.small { padding: 4px 9px; font-size: 12px; }
+  input[type=text], input[type=password], textarea, select { background: var(--panel2); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px; font: inherit; max-width: 100%; }
+  textarea { width: 100%; min-height: 60px; }
+  .cols { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; min-width: 0; }
+  .card h3 { margin: 12px 0 6px; font-size: 14px; color: var(--muted); }
+  .card h3:first-child { margin-top: 0; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  .row input[type=text] { flex: 1; min-width: 160px; }
+  .hint { color: var(--muted); font-size: 12px; margin: 4px 0; }
+  .state { margin: 8px 0 0; }
+  .state.err { color: var(--err); } .state.ok { color: var(--ok); } .state.warn { color: var(--warn); }
+  .thumbs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .thumbs .t { position: relative; }
+  .thumbs img { width: 72px; height: 96px; object-fit: contain; background: #0006; border-radius: 6px; border: 1px solid var(--line); }
+  .thumbs .x { position: absolute; top: -6px; right: -6px; padding: 0 6px; border-radius: 999px; font-size: 12px; }
+  #cropCv { width: 100%; max-height: 360px; object-fit: contain; touch-action: none; background: #0006; border-radius: 8px; display: block; }
+  .cands { display: flex; gap: 8px; flex-wrap: wrap; }
+  .cands img { width: 96px; height: 144px; object-fit: contain; background: #0006; border-radius: 8px; border: 2px solid transparent; cursor: pointer; }
+  .cands img.sel { border-color: var(--accent); }
+  .big { display: block; max-width: 100%; max-height: 60vh; margin: 8px auto; border-radius: 8px; background: #0006; }
+  .views { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .view { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+  .view.flag { border-color: var(--warn); }
+  .view img { width: 100%; aspect-ratio: 3 / 5; object-fit: contain; background: #0006; border-radius: 6px; display: block; }
+  .view b { display: block; margin-bottom: 4px; }
+  .view input { width: 100%; margin: 6px 0; }
+  .p2 { display: grid; grid-template-columns: 150px 1fr; gap: 12px; }
+  .flist { display: flex; flex-direction: column; gap: 6px; }
+  .fitem { display: grid; grid-template-columns: 56px 1fr; gap: 6px; align-items: center; text-align: left; padding: 6px; }
+  .fitem.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .fitem canvas, .fitem img { width: 56px; height: 56px; border-radius: 6px; background: #fff; object-fit: contain; }
+  .fitem small { display: block; color: var(--muted); }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pair.one { grid-template-columns: 1fr; }
+  .pair canvas { width: auto; max-width: 100%; max-height: 72vh; margin: 0 auto; height: auto; border-radius: 8px; display: block; }
+  .lbl { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+  input[type=range] { flex: 1; min-width: 140px; accent-color: var(--accent); }
+  pre { white-space: pre-wrap; font-size: 12px; color: var(--muted); }
+  @media (max-width: 820px) {
+    .cols, .p2 { grid-template-columns: 1fr; }
+    .flist { flex-direction: row; overflow-x: auto; }
+    .fitem { min-width: 130px; }
+    .views { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><b>棒人間アニメ</b> v2 検証版</h1>
+  <nav>
+    <button data-p="0">0 立ち絵</button>
+    <button data-p="1">1 三面図</button>
+    <button data-p="2">2 ポーズと生成</button>
+    <button data-p="s">⚙ AI設定</button>
+  </nav>
+  <span id="busy"></span>
+</header>
+<main>
+  <!-- 工程0 立ち絵 -->
+  <section id="p0" class="page">
+    <div class="cols">
+      <div class="card">
+        <h3>イメージ画像（1〜3枚）</h3>
+        <div id="inList" class="thumbs"></div>
+        <div class="row">
+          <label class="btn">画像を追加<input type="file" id="inFile" accept="image/*" multiple hidden></label>
+          <button id="useSample">サンプル（Solar）</button>
+        </div>
+        <p class="hint">1枚目の絵を指でなぞって四角く囲むと、その範囲のキャラだけを使います（複数人いる絵のとき）。</p>
+        <canvas id="cropCv" width="10" height="10"></canvas>
+        <div class="row"><button id="cropClear" class="small">囲みを消す</button></div>
+        <h3>立ち姿の型</h3>
+        <select id="poseType">
+          <option value="A">Aポーズ（腕を少し開く）</option>
+          <option value="K">気をつけ</option>
+          <option value="M">元の雰囲気を残す</option>
+        </select>
+        <h3>補足メモ（任意）</h3>
+        <textarea id="memo" placeholder="例：靴は金色、左手に盾"></textarea>
+        <div class="row">
+          <button id="standGen" class="pri">立ち絵を作る</button>
+          <button id="standDirect">1枚目をそのまま使う</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>候補（タップで選ぶ）</h3>
+        <div id="standCands" class="cands"></div>
+        <img id="standBig" class="big" alt="" hidden>
+        <div class="row">
+          <input type="text" id="standFix" placeholder="直したいこと（例：腕輪を金色に）">
+          <button id="standFixBtn">この候補を修正</button>
+        </div>
+        <div class="row"><button id="standOk" class="pri">この立ち絵で確定</button></div>
+        <p id="standState" class="state"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 工程1 三面図 -->
+  <section id="p1" class="page" hidden>
+    <div class="card">
+      <div class="row">
+        <button id="sheetGen" class="pri">三面図を作る</button>
+        <label><input type="checkbox" id="mirror"> 左右反転で作る（左右対称のキャラ用）</label>
+      </div>
+      <p class="hint">「右向き」はキャラが画面の右を向いている絵、「左向き」は左を向いている絵です。</p>
+      <div id="views" class="views"></div>
+      <details><summary>Gemini から返ってきたシート</summary><img id="sheetRaw" class="big" alt=""></details>
+      <div class="row"><button id="sheetOk" class="pri">三面図を確定</button></div>
+      <p id="sheetState" class="state"></p>
+    </div>
+  </section>
+
+  <!-- 工程2 ポーズと生成 -->
+  <section id="p2" class="page" hidden>
+    <div class="p2">
+      <div id="frameList" class="flist"></div>
+      <div class="card">
+        <div class="row">
+          <span>表示</span>
+          <select id="viewMode"><option value="side">並べる</option><option value="over">重ねる</option><option value="gen">生成だけ</option></select>
+          <button id="play">▶ 通して見る</button>
+        </div>
+        <div id="pair" class="pair">
+          <div id="manBox"><div class="lbl">デッサン人形（赤＝右半身、青＝左半身）</div><canvas id="manCv"></canvas></div>
+          <div><div class="lbl">生成結果 <span id="vNum"></span></div><canvas id="genCv"></canvas></div>
+        </div>
+        <div class="row">
+          <span>体の向き</span><input type="range" id="yaw" min="0" max="345" step="15">
+          <span id="yawLbl"></span>
+        </div>
+        <p class="hint" id="viewLbl"></p>
+        <div class="row">
+          <button id="fGen" class="pri">このポーズで生成</button>
+          <button id="fAll">5ポーズまとめて生成</button>
+          <button id="fStop" hidden>止める</button>
+          <label><input type="checkbox" id="usePrev" checked> 前のコマも添える</label>
+        </div>
+        <div class="row">
+          <button id="vPrev" class="small">◀ 前の版</button>
+          <button id="vNext" class="small">次の版 ▶</button>
+          <button id="vDrop" class="small">この版を消す</button>
+        </div>
+        <div class="row">
+          <input type="text" id="fFix" placeholder="直したいこと（例：右腕をもっとまっすぐ前に）">
+          <button id="fFixBtn">修正して作り直す</button>
+        </div>
+        <p id="fState" class="state"></p>
+        <details><summary>Gemini に送るポーズの説明文</summary><pre id="descPre"></pre></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- 設定 -->
+  <section id="ps" class="page" hidden>
+    <div class="card" style="max-width:560px">
+      <h3>Gemini API キー</h3>
+      <input type="password" id="genKey" placeholder="AIza..." autocomplete="off" style="width:100%">
+      <p class="hint">キーはこの端末のブラウザにだけ保存されます（v1 と共通）。</p>
+      <h3>モデル</h3>
+      <select id="genModel" style="width:100%">
+        <option value="gemini-2.5-flash-image">gemini-2.5-flash-image（速い・安い）</option>
+        <option value="gemini-3-pro-image-preview">gemini-3-pro-image-preview（高品質）</option>
+      </select>
+      <h3>立ち絵の候補の枚数</h3>
+      <select id="candN"><option>1</option><option selected>2</option><option>3</option><option>4</option></select>
+      <h3>コマの絵の形</h3>
+      <select id="aspect"><option value="1:1">正方形（1:1）</option><option value="3:4">縦長（3:4）</option><option value="4:3">横長（4:3）</option></select>
+      <h3>データ</h3>
+      <div class="row">
+        <button id="saveProj">ファイルに保存</button>
+        <label class="btn">ファイルを開く<input type="file" id="openProj" accept=".json,application/json" hidden></label>
+        <button id="resetAll">最初からやり直す</button>
+      </div>
+      <p class="hint">作業内容はこの端末に自動で保存されます。旧版（v1）は <a href="../v1/" style="color:var(--accent)">こちら</a>。</p>
+    </div>
+  </section>
+</main>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const MOCK = /[?&]mock=/.test(location.search);
+const uid = () => Math.random().toString(36).slice(2, 10);
+function loadImage(src) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; }); }
+function fileToDataURL(f) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); }); }
+function mkCanvas(w, h) { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; }
+const partOf = src => { const d = typeof src === 'string' ? src : src.toDataURL('image/png'); const m = /^data:([^;]+);base64,(.*)$/.exec(d); return { mime: m[1], data: m[2] }; };
+function fitCanvas(im, max = 1024) {
+  const w = im.naturalWidth || im.width, h = im.naturalHeight || im.height, s = Math.min(1, max / Math.max(w, h)), c = mkCanvas(w * s, h * s);
+  c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); return c;
+}
+
+// ---------- 状態と保存 ----------
+const VIEWS = [
+  { k: 'front', ja: '正面', en: 'FRONT view (facing the viewer)' },
+  { k: 'right', ja: '右向き', en: 'side profile facing toward the RIGHT edge of the image (we see the character\'s right side)' },
+  { k: 'back', ja: '背面', en: 'BACK view (we see the character from behind)' },
+  { k: 'left', ja: '左向き', en: 'side profile facing toward the LEFT edge of the image (we see the character\'s left side)' },
+];
+const PRESETS = [
+  { k: 'stand', ja: '立ち', yaw: 0, p: { armL: { s: 28 }, armR: { s: 28 }, elbowL: 8, elbowR: 8, legL: { s: 4 }, legR: { s: 4 } } },
+  { k: 'walk', ja: '歩き', yaw: 45, p: { legR: { f: 28 }, kneeR: 8, legL: { f: -18 }, kneeL: 28, armR: { f: -25, s: 8 }, elbowR: 15, armL: { f: 25, s: 8 }, elbowL: 25, spine: { t: 5 } } },
+  { k: 'punch', ja: '右ストレート', yaw: 30, p: { spine: { t: 25, f: 5 }, armR: { f: 88, s: 4 }, elbowR: 3, armL: { f: 55, s: 18 }, elbowL: 120, legL: { f: 24 }, kneeL: 18, legR: { f: -22, s: 4 }, kneeR: 8 } },
+  { k: 'kick', ja: '右前蹴り', yaw: 60, p: { legR: { f: 85 }, kneeR: 10, legL: { f: -6 }, kneeL: 15, spine: { f: -12 }, armR: { f: 30, s: 20 }, elbowR: 100, armL: { f: 50, s: 15 }, elbowL: 110 } },
+  { k: 'crouch', ja: 'しゃがみ', yaw: 0, p: { legL: { f: 75, s: 14 }, kneeL: 125, legR: { f: 75, s: 14 }, kneeR: 125, spine: { f: 35 }, head: { f: -25 }, armL: { f: 50, s: 10 }, elbowL: 60, armR: { f: 50, s: 10 }, elbowR: 60 } },
+];
+const freshState = () => ({
+  v: 2, inputs: [], crop: null, poseType: 'A', memo: '',
+  cands: [], sel: -1, stand: null, standId: null,
+  sheet: { raw: null, views: {}, flags: {}, ok: false, id: null, base: null },
+  frames: PRESETS.map(p => ({ k: p.k, yaw: p.yaw, vers: [], cur: -1 })), fi: 0,
+});
+let S = freshState();
+const DB = { db: null,
+  open() { return this.db || (this.db = new Promise((res, rej) => { const r = indexedDB.open('stick-animator-v2', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); })); },
+  async get(k) { const d = await this.open(); return new Promise(res => { const r = d.transaction('kv').objectStore('kv').get(k); r.onsuccess = () => res(r.result); r.onerror = () => res(null); }); },
+  async set(k, v) { const d = await this.open(); return new Promise(res => { const t = d.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = res; t.onerror = res; }); },
+};
+let saveT = 0;
+function save() { clearTimeout(saveT); saveT = setTimeout(() => DB.set('cur', JSON.stringify(S)).catch(() => {}), 600); }
+
+// ---------- 設定 ----------
+function settings() { return { key: $('genKey').value.trim(), model: $('genModel').value, n: +$('candN').value, aspect: $('aspect').value }; }
+function loadSettings() {
+  try { const o = JSON.parse(localStorage.getItem('sa_gen') || '{}'); $('genKey').value = o.key || ''; if (o.model) $('genModel').value = o.model; } catch {}
+  try { const o = JSON.parse(localStorage.getItem('sa2_opt') || '{}'); if (o.n) $('candN').value = o.n; if (o.aspect) $('aspect').value = o.aspect; } catch {}
+}
+function saveSettings() {
+  let o = {}; try { o = JSON.parse(localStorage.getItem('sa_gen') || '{}'); } catch {}
+  o.key = $('genKey').value.trim(); o.model = $('genModel').value; localStorage.setItem('sa_gen', JSON.stringify(o));
+  localStorage.setItem('sa2_opt', JSON.stringify({ n: $('candN').value, aspect: $('aspect').value }));
+}
+['genKey', 'genModel', 'candN'].forEach(id => $(id).addEventListener('change', saveSettings));
+$('aspect').addEventListener('change', () => { saveSettings(); man.clear(); renderP2(); });
+
+// ---------- Gemini ----------
+let busyN = 0;
+function busy(d) { busyN += d; $('busy').textContent = busyN > 0 ? '生成中…' : ''; }
+async function callGemini(parts, aspect, signal) {
+  if (MOCK) return mockGemini(parts, aspect, signal);
+  const st = settings();
+  if (!st.key) throw new Error('「⚙ AI設定」に Gemini API キーを入力してください');
+  const body = { contents: [{ role: 'user', parts: parts.map(p => typeof p === 'string' ? { text: p } : { inline_data: { mime_type: p.mime, data: p.data } }) }],
+    generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: aspect } } };
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let res;
+    try {
+      res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(st.model)}:generateContent`, {
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': st.key }, body: JSON.stringify(body) });
+    } catch (e) { if (e.name === 'AbortError') throw e; throw new Error('Gemini に接続できませんでした'); }
+    const json = await res.json().catch(() => ({}));
+    if (res.ok) {
+      const cand = json.candidates?.[0], out = cand?.content?.parts || [], img = out.find(p => p.inlineData || p.inline_data);
+      if (img) { const d = img.inlineData || img.inline_data; return `data:${d.mimeType || d.mime_type || 'image/png'};base64,${d.data}`; }
+      const txt = out.map(p => p.text).filter(Boolean).join(' ');
+      lastErr = new Error('画像が返りませんでした' + (cand?.finishReason ? `（${cand.finishReason}）` : '') + (txt ? '：' + txt.slice(0, 120) : ''));
+    } else {
+      lastErr = new Error(`API エラー ${res.status}：${json.error?.message || res.statusText}`);
+      if (![429, 500, 502, 503, 504].includes(res.status)) throw lastErr;
+    }
+    await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+  }
+  throw lastErr;
+}
+// デモ（?mock=1）：API を使わずに、それらしい絵を返す。?mock=bad は三面図の切り分け失敗を試す
+const ASPECTS = { '1:1': [1, 1], '2:3': [2, 3], '3:4': [3, 4], '4:3': [4, 3], '21:9': [21, 9] };
+async function mockGemini(parts, aspect, signal) {
+  await new Promise(r => setTimeout(r, 300));
+  if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+  const text = parts.find(p => typeof p === 'string'), imgs = await Promise.all(parts.filter(p => typeof p !== 'string').map(p => loadImage(`data:${p.mime};base64,${p.data}`)));
+  const [aw, ah] = ASPECTS[aspect], H = 900, W = Math.round(H * aw / ah), c = mkCanvas(W, H), g = c.getContext('2d');
+  g.fillStyle = '#00ff00'; g.fillRect(0, 0, W, H);
+  const put = (im, cx, h, flip = 0, sx = 1, tint = '') => {
+    const k = chromaKey(im), b = contentBBox(k) || { x0: 0, y0: 0, x1: k.width, y1: k.height }, s = h / (b.y1 - b.y0), w = (b.x1 - b.x0) * s * sx;
+    const t = mkCanvas(w, h), tg = t.getContext('2d'); if (flip) { tg.translate(w, 0); tg.scale(-1, 1); }
+    tg.drawImage(k, b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0, 0, 0, w, h);
+    if (tint) { tg.globalCompositeOperation = 'source-atop'; tg.fillStyle = tint; tg.fillRect(0, 0, w, h); }
+    g.drawImage(t, cx - w / 2, H * 0.05);
+  };
+  if (/pose mannequin/.test(text)) {
+    // 人形の絵を、肌色っぽく塗ってグリーンバックに
+    const m = imgs[0], t = mkCanvas(W, H), tg = t.getContext('2d'); tg.drawImage(m, 0, 0, W, H);
+    const d = tg.getImageData(0, 0, W, H), p = d.data;
+    for (let k = 0; k < p.length; k += 4) { if (p[k] > 235 && p[k + 1] > 235 && p[k + 2] > 235) { p[k] = 0; p[k + 1] = 255; p[k + 2] = 0; } else { p[k] = Math.min(255, p[k] * 0.6 + 120); p[k + 1] = p[k + 1] * 0.5 + 60; p[k + 2] = p[k + 2] * 0.4 + 40; } }
+    tg.putImageData(d, 0, 0); g.drawImage(t, 0, 0);
+  } else if (/turnaround sheet/.test(text)) {
+    const bad = /mock=bad/.test(location.search), n = bad ? 3 : 4;
+    for (let i = 0; i < n; i++) put(imgs[0], W * (i + 0.5) / n, H * 0.88, i === 3, i % 2 ? 0.45 : (bad ? 1.6 : 1), i === 2 ? '#30303080' : '');
+  } else {
+    put(imgs[0], W / 2, H * 0.88, /LEFT edge/.test(text), /profile/.test(text) ? 0.45 : 1, /BACK view/.test(text) ? '#30303080' : '');
+  }
+  return c.toDataURL('image/png');
+}
+function chromaKey(src) {
+  const c = mkCanvas(src.naturalWidth || src.width, src.naturalHeight || src.height), g = c.getContext('2d'); g.drawImage(src, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height), p = d.data;
+  for (let k = 0; k < p.length; k += 4) {
+    const r = p[k], gg = p[k + 1], b = p[k + 2], mx = Math.max(r, b), diff = (gg - mx) / 255;
+    if (diff > 0.3) { p[k + 3] = 0; continue; }
+    if (diff > 0.08) { p[k + 3] = Math.round(p[k + 3] * (1 - (diff - 0.08) / 0.22)); p[k + 1] = mx; }
+    else if (gg > mx) p[k + 1] = Math.round((gg + mx) / 2);
+  }
+  g.putImageData(d, 0, 0); return c;
+}
+// 透明でない部分の範囲（上下左右0.7%ずつのはみ出しは無視）
+function contentBBox(c) {
+  const { width: w, height: h } = c, d = c.getContext('2d').getImageData(0, 0, w, h).data, rows = new Float64Array(h), cols = new Float64Array(w); let n = 0;
+  for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) if (d[(y * w + x) * 4 + 3] > 40) { rows[y]++; cols[x]++; n++; }
+  if (n < 50) return null;
+  const cut = n * 0.007, lo = a => { let s = 0; for (let k = 0; k < a.length; k++) { s += a[k]; if (s > cut) return k; } return 0; }, hi = a => { let s = 0; for (let k = a.length - 1; k >= 0; k--) { s += a[k]; if (s > cut) return k; } return a.length - 1; };
+  return { x0: lo(cols), x1: hi(cols) + 1, y0: lo(rows), y1: hi(rows) + 1 };
+}
+// 全身が入っているか：グリーン以外が上端・下端にくっついていないか
+function touchesEdge(k) {
+  const { width: w, height: h } = k, d = k.getContext('2d').getImageData(0, 0, w, h).data, band = Math.max(2, Math.round(h * 0.006));
+  const rowCount = y0 => { let n = 0; for (let y = y0; y < y0 + band; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 120) n++; return n / (band * w); };
+  return rowCount(0) > 0.01 || rowCount(h - band) > 0.01;
+}
+
+// ---------- 画面切り替え ----------
+let page = '0';
+function show(p) {
+  page = p; document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
+  document.querySelectorAll('.page').forEach(s => s.hidden = s.id !== 'p' + p);
+  if (p === '0') renderP0(); if (p === '1') renderP1(); if (p === '2') renderP2();
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.p));
+function setState(id, msg, cls = '') { const e = $(id); e.textContent = msg; e.className = 'state ' + cls; }
+
+// ---------- 工程0 立ち絵 ----------
+async function addInputs(urls) {
+  for (const u of urls) { if (S.inputs.length >= 3) break; const im = await loadImage(u); S.inputs.push(fitCanvas(im, 1536).toDataURL('image/jpeg', 0.92)); }
+  if (S.inputs.length) S.crop = null; save(); renderP0();
+}
+$('inFile').onchange = async e => { const fs = [...e.target.files]; e.target.value = ''; await addInputs(await Promise.all(fs.map(fileToDataURL))); };
+$('useSample').onclick = () => { S.inputs = []; addInputs(['solar.jpg']); };
+$('poseType').onchange = () => { S.poseType = $('poseType').value; save(); };
+$('memo').onchange = () => { S.memo = $('memo').value; save(); };
+let cropImg = null, cropSrc = null, drag = null;
+async function drawCrop() {
+  const cv = $('cropCv'); cv.hidden = !S.inputs.length; $('cropClear').hidden = !S.crop; if (!S.inputs.length) return;
+  if (cropSrc !== S.inputs[0]) { cropSrc = S.inputs[0]; cropImg = await loadImage(cropSrc); }
+  cv.width = cropImg.width; cv.height = cropImg.height; const g = cv.getContext('2d'); g.drawImage(cropImg, 0, 0);
+  const r = drag || S.crop; if (r) {
+    g.fillStyle = '#0008'; g.beginPath(); g.rect(0, 0, cv.width, cv.height); g.rect(r.x * cv.width, r.y * cv.height, r.w * cv.width, r.h * cv.height); g.fill('evenodd');
+    g.strokeStyle = '#ff8a3d'; g.lineWidth = Math.max(2, cv.width / 200); g.strokeRect(r.x * cv.width, r.y * cv.height, r.w * cv.width, r.h * cv.height);
+  }
+}
+const cropPt = e => { const b = $('cropCv').getBoundingClientRect(); return { x: Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)), y: Math.min(1, Math.max(0, (e.clientY - b.top) / b.height)) }; };
+$('cropCv').addEventListener('pointerdown', e => { const p = cropPt(e); drag = { x0: p.x, y0: p.y, x: p.x, y: p.y, w: 0, h: 0 }; $('cropCv').setPointerCapture(e.pointerId); });
+$('cropCv').addEventListener('pointermove', e => { if (!drag) return; const p = cropPt(e); Object.assign(drag, { x: Math.min(drag.x0, p.x), y: Math.min(drag.y0, p.y), w: Math.abs(p.x - drag.x0), h: Math.abs(p.y - drag.y0) }); drawCrop(); });
+$('cropCv').addEventListener('pointerup', () => { if (drag && drag.w > 0.05 && drag.h > 0.05) S.crop = { x: drag.x, y: drag.y, w: drag.w, h: drag.h }; drag = null; save(); drawCrop(); });
+$('cropClear').onclick = () => { S.crop = null; save(); drawCrop(); };
+async function inputParts() {
+  const out = [];
+  for (let i = 0; i < S.inputs.length; i++) {
+    const im = await loadImage(S.inputs[i]); let c = fitCanvas(im, 1536);
+    if (i === 0 && S.crop) { const r = S.crop, t = mkCanvas(r.w * c.width, r.h * c.height); t.getContext('2d').drawImage(c, r.x * c.width, r.y * c.height, t.width, t.height, 0, 0, t.width, t.height); c = t; }
+    out.push(partOf(fitCanvas(c, 1024).toDataURL('image/jpeg', 0.92)));
+  }
+  return out;
+}
+const POSE_TEXT = {
+  A: 'A-pose: standing straight, facing the viewer, arms held about 30 degrees away from the body, hands relaxed and open, feet shoulder-width apart, neutral calm expression.',
+  K: 'Standing straight at attention, facing the viewer, arms down along the sides of the body, feet together, neutral calm expression.',
+  M: 'Standing upright and facing the viewer, in a relaxed version of the reference pose; keep the reference expression and attitude, but the whole body must face front with arms not covering the torso.',
+};
+function standPrompt() {
+  return [
+    `Using the character in the reference image${S.inputs.length > 1 ? 's' : ''}, draw a clean full-body standing illustration (a model sheet "tachi-e") of the SAME character for animation.`,
+    '- Same face, hairstyle, costume, colors, accessories, and the same art style, line weight and shading as the reference.',
+    `- Pose: ${POSE_TEXT[S.poseType]}`,
+    '- The whole body must be visible from the top of the head (including headwear, hair and wings) down to the feet, with a small empty margin above and below. Do not crop anything.',
+    '- Front view, even lighting, no cast shadow, no ground, no props on the floor, no text or labels.',
+    '- Background: plain flat pure green (#00FF00), nothing else.',
+    S.memo ? `- Notes from the user: ${S.memo}` : '',
+    'Output exactly one character, centered.',
+  ].filter(Boolean).join('\n');
+}
+async function genStandOnce(parts, signal) {
+  for (let t = 0; t < 2; t++) {
+    const url = await callGemini(parts, '2:3', signal), k = chromaKey(await loadImage(url));
+    const cut = touchesEdge(k);
+    if (!cut || t === 1) return { url, cut };
+  }
+}
+$('standGen').onclick = async () => {
+  if (!S.inputs.length) return setState('standState', 'イメージ画像を読み込んでください', 'err');
+  const n = settings().n; setState('standState', `立ち絵の候補を${n}枚作っています…`); busy(1); $('standGen').disabled = true;
+  try {
+    const parts = [standPrompt(), ...(await inputParts())];
+    const rs = await Promise.allSettled(Array.from({ length: n }, () => genStandOnce(parts)));
+    const ok = rs.filter(r => r.status === 'fulfilled').map(r => r.value);
+    ok.forEach(r => S.cands.push({ id: uid(), url: r.url, cut: r.cut, how: '生成' }));
+    if (ok.length) S.sel = S.cands.length - ok.length;
+    const err = rs.find(r => r.status === 'rejected');
+    setState('standState', ok.length ? `${ok.length}枚できました。気に入ったものを選んで「確定」してください。` + (ok.some(r => r.cut) ? '（全身が入りきっていない候補があります）' : '') + (err ? ` 失敗：${err.reason.message}` : '') : `失敗しました：${err.reason.message}`, ok.length ? (ok.some(r => r.cut) ? 'warn' : '') : 'err');
+  } catch (e) { setState('standState', e.message, 'err'); }
+  busy(-1); $('standGen').disabled = false; save(); renderP0();
+};
+$('standDirect').onclick = async () => {
+  if (!S.inputs.length) return setState('standState', 'イメージ画像を読み込んでください', 'err');
+  S.cands.push({ id: uid(), url: S.inputs[0], how: '読み込み' }); S.sel = S.cands.length - 1; save(); renderP0();
+  setState('standState', '1枚目の画像を候補に入れました。これでよければ「確定」してください。');
+};
+$('standFixBtn').onclick = async () => {
+  const c = S.cands[S.sel], fix = $('standFix').value.trim(); if (!c) return setState('standState', '先に候補を選んでください', 'err'); if (!fix) return setState('standState', '直したいことを書いてください', 'err');
+  setState('standState', '修正しています…'); busy(1);
+  try {
+    const parts = [`Edit this standing illustration (first image): ${fix}\nKeep everything else exactly the same: same character, same pose, same framing and size, whole body visible, plain flat pure green (#00FF00) background. The other images are the original character references.`, partOf(fitCanvas(await loadImage(c.url), 1024)), ...(await inputParts())];
+    const r = await genStandOnce(parts);
+    S.cands.push({ id: uid(), url: r.url, cut: r.cut, how: '修正：' + fix }); S.sel = S.cands.length - 1; $('standFix').value = '';
+    setState('standState', '修正版を候補に追加しました。', r.cut ? 'warn' : '');
+  } catch (e) { setState('standState', e.message, 'err'); }
+  busy(-1); save(); renderP0();
+};
+$('standOk').onclick = () => {
+  const c = S.cands[S.sel]; if (!c) return setState('standState', '先に候補を選んでください', 'err');
+  if (S.standId === c.id) return show('1');
+  S.stand = c.url; S.standId = c.id; save(); renderP0();
+  setState('standState', '立ち絵を確定しました。「1 三面図」へ進んでください。', 'ok'); show('1');
+};
+function renderP0() {
+  $('poseType').value = S.poseType; $('memo').value = S.memo;
+  const L = $('inList'); L.innerHTML = '';
+  S.inputs.forEach((u, i) => { const d = document.createElement('div'); d.className = 't'; d.innerHTML = `<img alt=""><button class="x small" title="外す">×</button>`; d.querySelector('img').src = u;
+    d.querySelector('button').onclick = () => { S.inputs.splice(i, 1); if (i === 0) S.crop = null; save(); renderP0(); }; L.appendChild(d); });
+  drawCrop();
+  const C = $('standCands'); C.innerHTML = '';
+  S.cands.forEach((c, i) => { const im = document.createElement('img'); im.src = c.url; im.title = c.how + (c.id === S.standId ? '（確定中）' : ''); im.className = i === S.sel ? 'sel' : '';
+    im.onclick = () => { S.sel = i; save(); renderP0(); }; C.appendChild(im); });
+  const c = S.cands[S.sel]; $('standBig').hidden = !c; if (c) $('standBig').src = c.url;
+  if (!S.cands.length) setState('standState', S.stand ? '' : 'まだ候補はありません。イメージ画像を読み込んで「立ち絵を作る」を押してください。');
+  else if (c && c.id === S.standId && !$('standState').textContent) setState('standState', 'この候補が確定中の立ち絵です。', 'ok');
+}
+
+// ---------- 工程1 三面図 ----------
+const VW = 600, VH = 1000, FIG_H = 900;
+// 1人分の切り抜き（透過済み）を、決まった大きさのグリーンバックの枠に足元と頭をそろえて置く
+function normalizeFigure(k, b) {
+  const c = mkCanvas(VW, VH), g = c.getContext('2d'); g.fillStyle = '#00ff00'; g.fillRect(0, 0, VW, VH);
+  const w = b.x1 - b.x0, h = b.y1 - b.y0; let s = FIG_H / h; if (w * s > VW - 20) s = (VW - 20) / w;
+  g.drawImage(k, b.x0, b.y0, w, h, (VW - w * s) / 2, (VH - FIG_H) / 2 + (FIG_H - h * s), w * s, h * s);
+  return c.toDataURL('image/png');
+}
+function flipURL(url) { return loadImage(url).then(im => { const c = mkCanvas(im.width, im.height), g = c.getContext('2d'); g.translate(c.width, 0); g.scale(-1, 1); g.drawImage(im, 0, 0); return c.toDataURL('image/png'); }); }
+// シートを、緑の隙間で縦に区切って4人に分ける
+function splitSheet(k) {
+  const { width: w, height: h } = k, d = k.getContext('2d').getImageData(0, 0, w, h).data, col = new Float64Array(w);
+  for (let x = 0; x < w; x++) { let n = 0; for (let y = 0; y < h; y += 2) if (d[(y * w + x) * 4 + 3] > 80) n++; col[x] = n; }
+  const on = x => col[x] > h * 0.004, gapMin = Math.max(3, w * 0.008); let runs = [], st = -1, gap = 0;
+  for (let x = 0; x <= w; x++) {
+    if (x < w && on(x)) { if (st < 0) st = x; gap = 0; }
+    else if (st >= 0) { gap++; if (gap >= gapMin || x === w) { runs.push({ x0: st, x1: x - gap + 1 }); st = -1; gap = 0; } }
+  }
+  runs = runs.filter(r => r.x1 - r.x0 > w * 0.03);
+  return runs.map(r => {
+    let y0 = h, y1 = 0; for (let y = 0; y < h; y++) { let n = 0; for (let x = r.x0; x < r.x1; x++) if (d[(y * w + x) * 4 + 3] > 80) n++; if (n > 1) { y0 = Math.min(y0, y); y1 = y + 1; } }
+    return { x0: r.x0, x1: r.x1, y0, y1 };
+  });
+}
+function sheetPrompt() {
+  return [
+    'Create a character turnaround sheet (model sheet) of the character in the reference standing illustration.',
+    'Show exactly FOUR full-body views of the same character side by side in ONE row, left to right:',
+    '1) front view (facing the viewer), 2) side profile facing toward the RIGHT edge of the image, 3) back view, 4) side profile facing toward the LEFT edge of the image.',
+    '- All four: identical character, costume, colors and proportions; same height; feet on the same ground line; same relaxed standing pose with arms slightly away from the body.',
+    '- Leave clear empty green space between the figures. Figures must not overlap or touch each other (keep wings, capes and hair inside each figure\'s own space).',
+    '- Plain flat pure green (#00FF00) background, no text, no labels, no ground shadow, no frames.',
+    '- Same art style and line weight as the reference.',
+  ].join('\n');
+}
+function viewPrompt(v, fix) {
+  return [
+    `Draw the same character as in the reference images, full body, as a ${v.en}.`,
+    '- Same costume, colors, proportions and art style. Same relaxed standing pose with arms slightly away from the body.',
+    '- The whole body from the top of the head (including headwear, hair and wings) to the feet must be visible, centered, with a small margin.',
+    '- Plain flat pure green (#00FF00) background, no shadow, no text.',
+    fix ? `- Correction requested by the user: ${fix}` : '',
+    'The first reference is the confirmed standing illustration; any further images are other confirmed views of the same character.',
+  ].filter(Boolean).join('\n');
+}
+async function normalizeSingle(url) {
+  const k = chromaKey(await loadImage(url)), b = contentBBox(k); if (!b) throw new Error('キャラが見つかりませんでした');
+  return { url: normalizeFigure(k, b), h: b.y1 - b.y0 };
+}
+async function genView(v, fix) {
+  const refs = [partOf(fitCanvas(await loadImage(S.stand), 1024))];
+  if (v.k !== 'front' && S.sheet.views.front) refs.push(partOf(S.sheet.views.front));
+  if (fix && S.sheet.views[v.k]) refs.push(partOf(S.sheet.views[v.k]));
+  return normalizeSingle(await callGemini([viewPrompt(v, fix) + (fix && S.sheet.views[v.k] ? '\nThe last image is the previous attempt for this view; keep what is good and apply the correction.' : ''), ...refs], '2:3'));
+}
+function checkHeights(hs) {
+  const vals = Object.values(hs).filter(Boolean).sort((a, b) => a - b); if (!vals.length) return {};
+  const med = vals[Math.floor(vals.length / 2)], f = {}; for (const [k, h] of Object.entries(hs)) f[k] = h && Math.abs(h - med) / med > 0.05; return f;
+}
+$('sheetGen').onclick = async () => {
+  if (!S.stand) return setState('sheetState', '先に「0 立ち絵」で立ち絵を確定してください', 'err');
+  busy(1); $('sheetGen').disabled = true; setState('sheetState', '三面図のシートを作っています…');
+  try {
+    const raw = await callGemini([sheetPrompt(), partOf(fitCanvas(await loadImage(S.stand), 1024))], '21:9');
+    S.sheet = { raw, views: {}, flags: {}, hs: {}, ok: false, id: uid(), base: S.standId };
+    const k = chromaKey(await loadImage(raw)), runs = splitSheet(k);
+    if (runs.length === 4) {
+      VIEWS.forEach((v, i) => { S.sheet.views[v.k] = normalizeFigure(k, runs[i]); S.sheet.hs[v.k] = runs[i].y1 - runs[i].y0; });
+      setState('sheetState', '4つの向きに切り分けました。');
+    } else {
+      setState('sheetState', `シートから4人をうまく切り分けられなかったので（${runs.length}人に見えました）、1向きずつ作り直しています…`, 'warn');
+      for (const v of VIEWS) {
+        if ($('mirror').checked && v.k === 'left') continue;
+        const r = await genView(v); S.sheet.views[v.k] = r.url; S.sheet.hs[v.k] = r.h; renderP1();
+      }
+      setState('sheetState', '1向きずつ作りました。');
+    }
+    if ($('mirror').checked && S.sheet.views.right) { S.sheet.views.left = await flipURL(S.sheet.views.right); S.sheet.hs.left = S.sheet.hs.right; }
+    S.sheet.flags = checkHeights(S.sheet.hs);
+    const bad = VIEWS.filter(v => S.sheet.flags[v.k]).map(v => v.ja);
+    if (bad.length) setState('sheetState', `${$('sheetState').textContent} 身長が5%以上ずれている向きがあります：${bad.join('、')}（大きさはそろえてあります）`, 'warn');
+  } catch (e) { setState('sheetState', e.message, 'err'); }
+  busy(-1); $('sheetGen').disabled = false; save(); renderP1();
+};
+async function redoView(v, fix) {
+  busy(1); setState('sheetState', `${v.ja}を作り直しています…`);
+  try {
+    const r = await genView(v, fix); S.sheet.views[v.k] = r.url; S.sheet.hs = S.sheet.hs || {}; S.sheet.hs[v.k] = r.h;
+    if ($('mirror').checked && v.k === 'right') { S.sheet.views.left = await flipURL(r.url); S.sheet.hs.left = r.h; }
+    S.sheet.ok = false; S.sheet.id = uid(); S.sheet.flags = checkHeights(S.sheet.hs);
+    setState('sheetState', `${v.ja}を作り直しました。`);
+  } catch (e) { setState('sheetState', e.message, 'err'); }
+  busy(-1); save(); renderP1();
+}
+$('sheetOk').onclick = () => {
+  if (VIEWS.some(v => !S.sheet.views[v.k])) return setState('sheetState', '4つの向きがそろっていません', 'err');
+  S.sheet.ok = true; save(); setState('sheetState', '三面図を確定しました。「2 ポーズと生成」へ進んでください。', 'ok'); show('2');
+};
+function renderP1() {
+  const V = $('views'); V.innerHTML = '';
+  for (const v of VIEWS) {
+    const d = document.createElement('div'); d.className = 'view' + (S.sheet.flags?.[v.k] ? ' flag' : '');
+    d.innerHTML = `<b>${v.ja}</b><img alt=""><input type="text" placeholder="直したいこと"><button class="small">作り直す</button>`;
+    const im = d.querySelector('img'); if (S.sheet.views[v.k]) im.src = S.sheet.views[v.k]; else im.removeAttribute('src');
+    d.querySelector('button').disabled = !S.stand;
+    d.querySelector('button').onclick = () => redoView(v, d.querySelector('input').value.trim());
+    V.appendChild(d);
+  }
+  $('sheetRaw').hidden = !S.sheet.raw; if (S.sheet.raw) $('sheetRaw').src = S.sheet.raw;
+  if (!$('sheetState').textContent) {
+    if (!S.stand) setState('sheetState', '先に「0 立ち絵」で立ち絵を確定してください。', 'warn');
+    else if (S.sheet.base && S.sheet.base !== S.standId) setState('sheetState', '立ち絵が変わりました。三面図を作り直してください。', 'warn');
+    else if (S.sheet.ok) setState('sheetState', '三面図は確定済みです。', 'ok');
+  }
+}
+
+// ---------- 3D デッサン人形 ----------
+const R = d => d * Math.PI / 180;
+const mul = (a, b) => [0, 1, 2].map(i => [0, 1, 2].map(j => a[i][0] * b[0][j] + a[i][1] * b[1][j] + a[i][2] * b[2][j]));
+const app = (m, v) => [m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2], m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2], m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2]];
+const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const rx = d => { const c = Math.cos(R(d)), s = Math.sin(R(d)); return [[1, 0, 0], [0, c, -s], [0, s, c]]; };
+const ry = d => { const c = Math.cos(R(d)), s = Math.sin(R(d)); return [[c, 0, s], [0, 1, 0], [-s, 0, c]]; };
+const rz = d => { const c = Math.cos(R(d)), s = Math.sin(R(d)); return [[c, -s, 0], [s, c, 0], [0, 0, 1]]; };
+// 座標：x＝画面の右、y＝上、z＝カメラ側。yaw 0 でキャラはカメラを向く（キャラの左手が画面の右）
+// f＝前に振る角度、s＝外に開く角度、t＝ひねり
+const torsoRot = (r = {}) => mul(ry(r.t || 0), mul(rx(r.f || 0), rz(-(r.s || 0))));
+const limbRot = (sg, r = {}) => mul(rz(sg * (r.s || 0)), mul(rx(-(r.f || 0)), ry(sg * (r.t || 0))));
+function solvePose(p, yaw) {
+  const J = {}, Rp = mul(ry(yaw), torsoRot(p.body)), pel = [0, 0, 0];
+  J.pelvis = pel;
+  const Rc = mul(Rp, torsoRot(p.spine)); J.chest = add(pel, app(Rp, [0, 0.17, 0]));
+  J.neck = add(J.chest, app(Rc, [0, 0.11, 0]));
+  const Rh = mul(Rc, torsoRot(p.head)); J.head = add(J.neck, app(Rh, [0, 0.075, 0])); J.Rh = Rh;
+  for (const [S_, sg] of [['L', 1], ['R', -1]]) {
+    J['sh' + S_] = add(J.chest, app(Rc, [sg * 0.095, 0.085, 0]));
+    const Ra = mul(Rc, limbRot(sg, p['arm' + S_])); J['el' + S_] = add(J['sh' + S_], app(Ra, [0, -0.15, 0]));
+    const Rf = mul(Ra, rx(-(p['elbow' + S_] || 0))); J['wr' + S_] = add(J['el' + S_], app(Rf, [0, -0.135, 0])); J['hd' + S_] = add(J['wr' + S_], app(Rf, [0, -0.05, 0]));
+    J['hp' + S_] = add(pel, app(Rp, [sg * 0.06, -0.02, 0]));
+    const Rl = mul(Rp, limbRot(sg, p['leg' + S_])); J['kn' + S_] = add(J['hp' + S_], app(Rl, [0, -0.235, 0]));
+    const Rk = mul(Rl, rx(p['knee' + S_] || 0)); J['an' + S_] = add(J['kn' + S_], app(Rk, [0, -0.235, 0])); J['to' + S_] = add(J['an' + S_], app(Rk, [0, -0.02, 0.075]));
+  }
+  // 一番低いところを床（y=0）に
+  let lo = Infinity; for (const [k, v] of Object.entries(J)) if (Array.isArray(v) && typeof v[0] === 'number') lo = Math.min(lo, v[1] - (k === 'head' ? 0.065 : 0.03));
+  for (const v of Object.values(J)) if (Array.isArray(v) && typeof v[0] === 'number') v[1] -= lo - (p.lift || 0);
+  return J;
+}
+function frameSize() { return { '1:1': [768, 768], '3:4': [672, 896], '4:3': [896, 672] }[settings().aspect] || [768, 768]; }
+function drawMannequin(g, W, H, p, yaw) {
+  const J = solvePose(p, yaw), unit = Math.min(H * 0.82, W * 1.1), cx = W / 2, gy = H * 0.94;
+  const P = v => [cx + v[0] * unit, gy - v[1] * unit, v[2]];
+  const segs = [];
+  const seg = (a, b, r, col) => segs.push({ a: P(a), b: P(b), r: r * unit, col, z: (a[2] + b[2]) / 2 });
+  const RED = [220, 70, 70], BLUE = [60, 110, 225], GRAY = [150, 150, 155];
+  seg(J.pelvis, J.chest, 0.07, GRAY); seg(J.chest, J.neck, 0.06, GRAY); seg(J.shL, J.shR, 0.04, GRAY); seg(J.hpL, J.hpR, 0.055, GRAY);
+  for (const [S_, col] of [['L', BLUE], ['R', RED]]) {
+    seg(J['sh' + S_], J['el' + S_], 0.033, col); seg(J['el' + S_], J['wr' + S_], 0.028, col); seg(J['wr' + S_], J['hd' + S_], 0.03, col);
+    seg(J['hp' + S_], J['kn' + S_], 0.042, col); seg(J['kn' + S_], J['an' + S_], 0.035, col); seg(J['an' + S_], J['to' + S_], 0.028, col);
+  }
+  segs.push({ head: true, c: P(J.head), r: 0.068 * unit, z: J.head[2] });
+  segs.sort((a, b) => a.z - b.z);
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+  g.strokeStyle = '#dcdcdc'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, gy); g.lineTo(W, gy); g.stroke();
+  const shade = (col, z) => { const k = 0.75 + Math.max(-0.25, Math.min(0.25, z * 1.2)); return `rgb(${col.map(c => Math.round(Math.min(255, c * k))).join(',')})`; };
+  g.lineCap = 'round';
+  for (const s of segs) {
+    if (s.head) {
+      g.fillStyle = '#c9c9cc'; g.strokeStyle = '#555'; g.lineWidth = 2; g.beginPath(); g.arc(s.c[0], s.c[1], s.r, 0, 7); g.fill(); g.stroke();
+      // 顔の向き：目と鼻（カメラ側を向いているときだけ見える）
+      for (const [x, y, rr] of [[0.026, 0.012, 0.011], [-0.026, 0.012, 0.011], [0, -0.012, 0.009]]) {
+        const w = add(J.head, app(J.Rh, [x, y, 0.062])); if (w[2] - J.head[2] < 0.01) continue;
+        const q = P(w); g.fillStyle = '#222'; g.beginPath(); g.arc(q[0], q[1], rr * unit, 0, 7); g.fill();
+      }
+      continue;
+    }
+    g.strokeStyle = '#333'; g.lineWidth = s.r * 2 + 3; g.beginPath(); g.moveTo(s.a[0], s.a[1]); g.lineTo(s.b[0], s.b[1]); g.stroke();
+    g.strokeStyle = shade(s.col, s.z); g.lineWidth = s.r * 2; g.beginPath(); g.moveTo(s.a[0], s.a[1]); g.lineTo(s.b[0], s.b[1]); g.stroke();
+  }
+  return J;
+}
+const man = { cache: new Map(), clear() { this.cache.clear(); },
+  canvas(i) { const f = S.frames[i], key = f.yaw + '|' + settings().aspect; let c = this.cache.get(i); if (c && c.key === key) return c.cv;
+    const [W, H] = frameSize(), cv = mkCanvas(W, H); drawMannequin(cv.getContext('2d'), cv.width, cv.height, PRESETS[i].p, f.yaw); this.cache.set(i, { key, cv }); return cv; } };
+
+// ---------- ポーズの説明文 ----------
+const normYaw = y => ((y % 360) + 360) % 360;
+function facingText(yaw) {
+  const a = normYaw(yaw);
+  const t = { 0: 'facing the viewer (front view)', 45: 'turned 45 degrees toward the viewer\'s right (three-quarter front view; we see the character\'s right side more)', 90: 'in side profile, facing toward the RIGHT edge of the image', 135: 'turned away, three-quarter back view, facing toward the back-right', 180: 'facing away from the viewer (back view)', 225: 'turned away, three-quarter back view, facing toward the back-left', 270: 'in side profile, facing toward the LEFT edge of the image', 315: 'turned 45 degrees toward the viewer\'s left (three-quarter front view; we see the character\'s left side more)' };
+  const n = Math.round(a / 45) * 45 % 360; return t[n] + (a % 45 ? ` (about ${a} degrees)` : '');
+}
+function facingJa(yaw) { const a = normYaw(yaw); return ['正面', '右斜め前', '右向き', '右斜め後ろ', '背面', '左斜め後ろ', '左向き', '左斜め前'][Math.round(a / 45) % 8]; }
+function viewsFor(yaw) {
+  const a = normYaw(yaw), ang = { front: 0, right: 90, back: 180, left: 270 }, d = k => { const x = Math.abs(a - ang[k]) % 360; return Math.min(x, 360 - x); };
+  const ks = Object.keys(ang).sort((p, q) => d(p) - d(q)); return d(ks[0]) > 20 ? ks.slice(0, 2) : ks.slice(0, 1);
+}
+function describePose(i) {
+  const p = PRESETS[i].p, f = S.frames[i], J = solvePose(p, 0), out = [`Body orientation: ${facingText(f.yaw)}.`];
+  for (const [S_, sg, name] of [['R', -1, 'right'], ['L', 1, 'left']]) {
+    const d = sub(J['hd' + S_], J['sh' + S_]), L = Math.hypot(...d), fw = d[2] / L, up = d[1] / L, out_ = d[0] * sg / L, e = p['elbow' + S_] || 0;
+    let s;
+    if (e > 90 && J['hd' + S_][1] > J['sh' + S_][1] - 0.12 && fw > 0) s = 'bent sharply in a fighting guard, fist up near the chin';
+    else if (up > 0.6) s = 'raised up above the head';
+    else if (fw > 0.6) s = Math.abs(up) < 0.3 ? 'extended straight forward at shoulder height (punching / reaching)' : up > 0 ? 'reaching forward and upward' : 'reaching forward and down';
+    else if (fw < -0.4) s = 'swung backward behind the body';
+    else if (out_ > 0.6) s = 'held out to the side';
+    else if (out_ > 0.35) s = 'hanging down, held slightly away from the body';
+    else if (fw > 0.3) s = 'swung slightly forward';
+    else s = 'hanging down by the side';
+    out.push(`${name[0].toUpperCase() + name.slice(1)} arm: ${s}${e < 20 ? ', elbow straight' : e < 70 ? ', elbow slightly bent' : ''}.`);
+  }
+  for (const [S_, name] of [['R', 'right'], ['L', 'left']]) {
+    const t = sub(J['kn' + S_], J['hp' + S_]), ang = Math.atan2(t[2], -t[1]) * 180 / Math.PI, k = p['knee' + S_] || 0;
+    let s;
+    if (ang > 50 && k > 100 && J.pelvis[1] < 0.38) s = 'squatting: thigh pointing forward, knee deeply bent, foot flat on the ground';
+    else if (ang > 60) s = k < 30 ? `kicking: thigh raised forward to about ${Math.round(ang)} degrees with the leg extended straight forward` : `knee lifted high in front (thigh about ${Math.round(ang)} degrees forward)`;
+    else if (ang > 12) s = 'stepping forward';
+    else if (ang < -12) s = 'stepping back';
+    else s = 'straight down under the hip';
+    out.push(`${name[0].toUpperCase() + name.slice(1)} leg: ${s}${/squatting/.test(s) ? '' : k > 100 ? ', knee deeply bent' : k > 30 ? ', knee bent' : ''}.`);
+  }
+  const sp = p.spine || {};
+  if ((sp.f || 0) > 15) out.push('Upper body leaning forward.'); else if ((sp.f || 0) < -8) out.push('Upper body leaning slightly back.');
+  if (Math.abs(sp.t || 0) > 15) out.push(`Upper body twisted so the ${sp.t > 0 ? 'right' : 'left'} shoulder comes forward.`);
+  if (J.pelvis[1] < 0.38) out.push('Crouching low, hips close to the ground.');
+  if ((p.lift || 0) > 0) out.push('Airborne: both feet off the ground.'); else out.push('Feet on the ground (same ground line as the mannequin).');
+  return out.join('\n');
+}
+
+// ---------- 工程2 生成 ----------
+async function bboxOfMannequin(cv) {
+  const { width: w, height: h } = cv, d = cv.getContext('2d').getImageData(0, 0, w, h).data; let x0 = w, x1 = 0, y0 = h, y1 = 0;
+  for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) { const k = (y * w + x) * 4; if (d[k] < 200 || d[k + 1] < 200 || d[k + 2] < 200) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } }
+  return { x0, x1, y0, y1 };
+}
+// 生成画像を人形の身長と足元に合わせる置き方（コマ間で跳ねないように）
+async function fitFor(i, url) {
+  const cv = man.canvas(i), m = await bboxOfMannequin(cv), k = chromaKey(await loadImage(url)), b = contentBBox(k);
+  if (!b) return null;
+  const sx = cv.width / k.width, sy = cv.height / k.height, gb = { x0: b.x0 * sx, x1: b.x1 * sx, y0: b.y0 * sy, y1: b.y1 * sy };
+  const s = (m.y1 - m.y0) / (gb.y1 - gb.y0); if (!(s > 0.5 && s < 2)) return null;
+  const w = cv.width * s, h = cv.height * s, x = (m.x0 + m.x1) / 2 - ((gb.x0 + gb.x1) / 2) * s, y = m.y1 - gb.y1 * s;
+  return { x, y, w, h };
+}
+function framePrompt(i, views, withPrev, fix) {
+  const lines = [
+    'Draw the character from the reference images in the exact pose of the 3D pose mannequin in IMAGE 1. This is one frame of an animation.',
+    'IMAGE 1 is a pose mannequin, NOT the character. Red limbs are the character\'s RIGHT arm and leg, blue limbs are the LEFT arm and leg; the dots on the head show where the face points.',
+    'Copy from IMAGE 1: the pose, the direction the body faces, the position in the frame and the size (head and feet at the same places). Do NOT draw the mannequin itself and do not copy its colors.',
+  ];
+  let n = 2;
+  for (const k of views) { lines.push(`IMAGE ${n++}: the character seen as ${VIEWS.find(v => v.k === k).en}. Use it for costume, hair, colors and proportions from this angle.`); }
+  lines.push(`IMAGE ${n++}: the full turnaround sheet (front / facing right / back / facing left) for the overall design.`);
+  if (withPrev) lines.push(`IMAGE ${n++}: the previous frame of this animation. Keep colors and details consistent with it, but do NOT copy its pose.`);
+  if (fix) lines.push(`IMAGE ${n++}: the previous attempt for THIS frame. Keep what is good and apply this correction: ${fix}`);
+  lines.push('', 'Pose description:', describePose(i), '',
+    'Output rules: same art style, line weight and coloring as the references; full body visible; plain flat pure green (#00FF00) background; no shadow, no ground, no text, no mannequin.');
+  return lines.join('\n');
+}
+function sheetOverview() {
+  const c = mkCanvas(VW * 4 / 2, VH / 2), g = c.getContext('2d'); g.fillStyle = '#00ff00'; g.fillRect(0, 0, c.width, c.height);
+  return Promise.all(VIEWS.map(v => loadImage(S.sheet.views[v.k]))).then(ims => { ims.forEach((im, k) => g.drawImage(im, k * VW / 2, 0, VW / 2, VH / 2)); return c; });
+}
+let abort = null;
+async function genFrame(i, fix) {
+  const f = S.frames[i], views = viewsFor(f.yaw), prevI = [...Array(i).keys()].reverse().find(j => S.frames[j].cur >= 0);
+  const withPrev = $('usePrev').checked && prevI !== undefined, cur = f.vers[f.cur];
+  const parts = [framePrompt(i, views, withPrev, fix ? fix : ''), partOf(man.canvas(i)), ...views.map(k => partOf(S.sheet.views[k])), partOf(await sheetOverview())];
+  if (withPrev) parts.push(partOf(fitCanvas(await loadImage(S.frames[prevI].vers[S.frames[prevI].cur].url), 1024)));
+  if (fix && cur) parts.push(partOf(fitCanvas(await loadImage(cur.url), 1024)));
+  const url = await callGemini(parts, settings().aspect, abort?.signal);
+  const fit = await fitFor(i, url);
+  f.vers.push({ id: uid(), url, fit, sheet: S.sheet.id, yaw: f.yaw, aspect: settings().aspect, fix: fix || '' }); f.cur = f.vers.length - 1; save();
+}
+function needSheet() {
+  if (!S.sheet.ok || VIEWS.some(v => !S.sheet.views[v.k])) { setState('fState', '先に「1 三面図」で三面図を確定してください', 'err'); return true; }
+  return false;
+}
+async function runFrames(list, fix) {
+  if (needSheet()) return;
+  abort = new AbortController(); $('fStop').hidden = false; ['fGen', 'fAll', 'fFixBtn'].forEach(id => $(id).disabled = true); busy(1);
+  let done = 0, err = null;
+  for (const i of list) {
+    if (abort.signal.aborted) break;
+    setState('fState', `${PRESETS[i].ja}を生成しています…（${done + 1} / ${list.length}）`); S.fi = i; renderP2();
+    try { await genFrame(i, fix); done++; } catch (e) { if (e.name === 'AbortError') break; err = e; }
+    renderP2();
+  }
+  busy(-1); $('fStop').hidden = true; ['fGen', 'fAll', 'fFixBtn'].forEach(id => $(id).disabled = false); abort = null;
+  setState('fState', err ? `失敗：${err.message}` : `${done}枚できました。`, err ? 'err' : 'ok'); renderP2();
+}
+$('fGen').onclick = () => runFrames([S.fi]);
+$('fAll').onclick = () => runFrames(PRESETS.map((_, i) => i));
+$('fStop').onclick = () => abort?.abort();
+$('fFixBtn').onclick = () => { const fix = $('fFix').value.trim(); if (!fix) return setState('fState', '直したいことを書いてください', 'err'); if (S.frames[S.fi].cur < 0) return setState('fState', '先に一度生成してください', 'err'); $('fFix').value = ''; runFrames([S.fi], fix); };
+$('vPrev').onclick = () => { const f = S.frames[S.fi]; if (f.cur > 0) { f.cur--; save(); renderP2(); } };
+$('vNext').onclick = () => { const f = S.frames[S.fi]; if (f.cur < f.vers.length - 1) { f.cur++; save(); renderP2(); } };
+$('vDrop').onclick = () => { const f = S.frames[S.fi]; if (f.cur < 0) return; f.vers.splice(f.cur, 1); f.cur = Math.min(f.cur, f.vers.length - 1); save(); renderP2(); };
+$('yaw').oninput = () => { S.frames[S.fi].yaw = +$('yaw').value; save(); renderP2(); };
+$('viewMode').onchange = () => renderP2();
+const keyedCache = new Map();
+async function keyedOf(url) { let k = keyedCache.get(url); if (!k) { k = chromaKey(await loadImage(url)); keyedCache.set(url, k); if (keyedCache.size > 30) keyedCache.delete(keyedCache.keys().next().value); } return k; }
+async function drawGen(cv, i, mode) {
+  const f = S.frames[i], v = f.vers[f.cur], mc = man.canvas(i); cv.width = mc.width; cv.height = mc.height; const g = cv.getContext('2d');
+  if (mode === 'over' || mode === 'play') { g.fillStyle = '#ffffff'; g.fillRect(0, 0, cv.width, cv.height); }
+  else { g.fillStyle = '#2a2e37'; g.fillRect(0, 0, cv.width, cv.height); }
+  if (!v) { g.fillStyle = '#9a9fab'; g.font = `${cv.width / 24}px sans-serif`; g.textAlign = 'center'; g.fillText('まだ生成していません', cv.width / 2, cv.height / 2); if (mode === 'over') { g.globalAlpha = 0.5; g.drawImage(mc, 0, 0); g.globalAlpha = 1; } return; }
+  if (mode === 'side' || mode === 'gen') { const im = await loadImage(v.url); g.drawImage(im, 0, 0, cv.width, cv.height); return; }
+  const k = await keyedOf(v.url), b = v.fit || { x: 0, y: 0, w: cv.width, h: cv.height };
+  g.drawImage(k, b.x, b.y, b.w, b.h);
+  if (mode === 'over') { g.globalAlpha = 0.4; g.globalCompositeOperation = 'multiply'; g.drawImage(mc, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; }
+}
+let playT = 0;
+$('play').onclick = () => {
+  if (playT) { clearInterval(playT); playT = 0; $('play').textContent = '▶ 通して見る'; renderP2(); return; }
+  const idx = S.frames.map((f, i) => f.cur >= 0 ? i : -1).filter(i => i >= 0); if (idx.length < 2) return setState('fState', '2枚以上生成すると通して見られます', 'warn');
+  let n = 0; $('play').textContent = '■ 止める'; $('pair').className = 'pair one'; $('manBox').hidden = true;
+  playT = setInterval(() => { drawGen($('genCv'), idx[n++ % idx.length], 'play'); }, 500);
+};
+function renderP2() {
+  if (playT) return;
+  const L = $('frameList'); L.innerHTML = '';
+  PRESETS.forEach((p, i) => {
+    const f = S.frames[i], v = f.vers[f.cur], b = document.createElement('button'); b.className = 'fitem' + (i === S.fi ? ' on' : '');
+    const stale = v && v.sheet !== S.sheet.id;
+    b.innerHTML = `<span></span><span>${i + 1}. ${p.ja}<small>${facingJa(f.yaw)}${v ? ` ・ ${f.vers.length}版` : ''}${stale ? ' ・ 要更新' : ''}</small></span>`;
+    const th = v ? Object.assign(new Image(), { src: v.url }) : (() => { const c = mkCanvas(112, 112), mc = man.canvas(i); const s = Math.min(112 / mc.width, 112 / mc.height); c.getContext('2d').fillStyle = '#fff'; c.getContext('2d').fillRect(0, 0, 112, 112); c.getContext('2d').drawImage(mc, (112 - mc.width * s) / 2, (112 - mc.height * s) / 2, mc.width * s, mc.height * s); return c; })();
+    b.firstChild.replaceWith(th); b.onclick = () => { S.fi = i; save(); renderP2(); }; L.appendChild(b);
+  });
+  const i = S.fi, f = S.frames[i], mode = $('viewMode').value;
+  $('yaw').value = f.yaw; $('yawLbl').textContent = `${f.yaw}°（${facingJa(f.yaw)}）`;
+  $('viewLbl').textContent = '生成のときに渡す三面図：' + viewsFor(f.yaw).map(k => VIEWS.find(v => v.k === k).ja).join('・') + '（＋全体のシート）';
+  const mc = man.canvas(i), cv = $('manCv'); cv.width = mc.width; cv.height = mc.height; cv.getContext('2d').drawImage(mc, 0, 0);
+  $('pair').className = 'pair' + (mode === 'side' ? '' : ' one'); $('manBox').hidden = mode !== 'side';
+  drawGen($('genCv'), i, mode);
+  $('vNum').textContent = f.vers.length ? `（${f.cur + 1} / ${f.vers.length}版${f.vers[f.cur]?.fix ? '・修正：' + f.vers[f.cur].fix : ''}）` : '';
+  $('vPrev').disabled = f.cur <= 0; $('vNext').disabled = f.cur >= f.vers.length - 1; $('vDrop').disabled = f.cur < 0;
+  $('descPre').textContent = describePose(i);
+  if (!$('fState').textContent && (!S.sheet.ok)) setState('fState', '先に「1 三面図」で三面図を確定してください。', 'warn');
+}
+
+// ---------- データ ----------
+$('saveProj').onclick = () => {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S)], { type: 'application/json' })); a.download = 'stick-animator-v2.json'; a.click();
+};
+$('openProj').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; try { const o = JSON.parse(await f.text()); if (o.v !== 2) throw 0; S = Object.assign(freshState(), o); man.clear(); save(); show('0'); } catch { alert('v2 のファイルではありません'); } };
+$('resetAll').onclick = () => { if (!confirm('立ち絵・三面図・生成した絵をすべて消して、最初からやり直しますか？')) return; S = freshState(); man.clear(); save(); ['standState', 'sheetState', 'fState'].forEach(id => setState(id, '')); show('0'); };
+
+window.__dev = { get S() { return S; }, renderP2, solvePose, describePose, viewsFor, splitSheet, man };
+(async () => {
+  loadSettings();
+  try { const s = await DB.get('cur'); if (s && !/[?&]fresh/.test(location.search)) S = Object.assign(freshState(), JSON.parse(s)); } catch {}
+  show(S.stand ? (S.sheet.ok ? '2' : '1') : '0');
+})();
+</script>
+</body>
+</html>

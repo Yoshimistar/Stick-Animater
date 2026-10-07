@@ -8,3 +8,4 @@
 - 単一ファイル（index.html）、サーバー不要
 - 画像生成は棒人間のシルエットと照合し、ずれていれば違いを示して自動で作り直します（回数は「AI の設定」で変更可）
 - 旧版（v1：棒人間＋Gemini清書方式）は v1/ に保存：https://yoshimistar.github.io/Stick-Animater/v1/
+- v2 検証版（立ち絵→三面図→3Dデッサン人形のポーズから生成）：https://yoshimistar.github.io/Stick-Animater/v2/
