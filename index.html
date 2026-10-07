@@ -264,6 +264,7 @@
           <div class="row" style="justify-content:space-between"><b id="genTitle" style="color:var(--accent)">コマ</b>
             <div class="row" style="gap:4px"><button id="genVerPrev" class="small" aria-label="前の版">◀</button><span id="genVer" class="num" style="min-width:3.5em;text-align:center"></span><button id="genVerNext" class="small" aria-label="次の版">▶</button></div></div>
           <p id="genState" style="margin:4px 0 8px"></p>
+          <div id="genRawBox" hidden style="margin:0 0 8px"><span class="note">Gemini から返ってきたそのままの画像：</span><img id="genRaw" alt="生成されたそのままの画像" style="display:block;max-width:100%;max-height:160px;margin-top:4px;border:1px solid var(--line);border-radius:6px"></div>
           <div class="seg"><button id="genOne" class="primary">このコマを生成</button><button id="genToPose">棒人間で直す</button></div>
           <label style="display:block;font-size:12px;margin-top:10px;color:var(--muted)">プロンプトで修正（例：前の手をもう少し胸側に）</label>
           <textarea id="genFix" rows="2" placeholder="直したいところを書いてください"></textarea>
@@ -1212,13 +1213,16 @@ function genDrawable(id) {
   let o = genImgs.get(id);
   if (!o) { o = { img: new Image(), ready: false, keyed: null }; genImgs.set(id, o); o.img.onload = () => { o.ready = true; thumbs.clear(); renderStripSoon(); draw(); }; o.img.src = S.gen[id]; }
   if (!o.ready) return null;
-  if ($('genGreen').checked) { if (!o.keyed) o.keyed = chromaKey(o.img); return o.keyed; }
+  if ($('genGreen').checked) {
+    if (!o.keyed) { o.keyed = chromaKey(o.img); const bb = contentBBox(o.keyed); o.keyOk = !!bb && (bb.x1 - bb.x0) * (bb.y1 - bb.y0) > o.keyed.width * o.keyed.height * 0.02; }
+    return o.keyOk ? o.keyed : o.img;
+  }
   return o.img;
 }
 // 1コマを最終的な絵で描く（生成画像があればそれ、無ければ切り絵）
 function drawFinal(g, i, useGen = true) {
   const v = useGen && i > 0 ? curVer(i) : null, im = v && genDrawable(v.id);
-  if (im) { g.drawImage(im, v.box.x, v.box.y, v.box.w, v.box.h); return true; }
+  if (im) { const b = ($('genAlign').checked && v.fit) || v.box; g.drawImage(im, b.x, b.y, b.w, b.h); return true; }
   drawPuppet(g, i === 0 ? zeroPose() : S.frames[i].pose); return false;
 }
 const useGenOut = () => $('exUseGen').checked;
@@ -1260,7 +1264,7 @@ async function mockGemini(parts, signal) {
   const p = parts.find(x => typeof x !== 'string'), im = await loadImage(`data:${p.mime};base64,${p.data}`);
   const c = mkCanvas(im.width, im.height), g = c.getContext('2d'); g.drawImage(im, 0, 0);
   g.globalCompositeOperation = 'source-atop'; g.fillStyle = '#4060ff30'; g.fillRect(0, 0, c.width, c.height);
-  g.globalCompositeOperation = 'source-over'; g.fillStyle = '#000a'; g.fillRect(0, 0, 150, 40); g.fillStyle = '#fff'; g.font = 'bold 26px sans-serif'; g.fillText('MOCK', 12, 30);
+  g.globalCompositeOperation = 'source-over';
   return c.toDataURL('image/png');
 }
 function rulesText(i, green) {
@@ -1291,23 +1295,26 @@ async function buildGenParts(i, box, green) {
 }
 // 生成結果のキャラの位置と大きさを、原画（切り絵）に合わせる（グリーンバック時）
 function contentBBox(c) {
-  const { width: w, height: h } = c, d = c.getContext('2d').getImageData(0, 0, w, h).data; let x0 = w, y0 = h, x1 = -1, y1 = -1;
-  for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) if (d[(y * w + x) * 4 + 3] > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-  return x1 < 0 ? null : { x0, y0, x1, y1 };
+  // はみ出したゴミや文字に引っぱられないよう、不透明ピクセルの上下左右0.7%ずつを無視した範囲
+  const { width: w, height: h } = c, d = c.getContext('2d').getImageData(0, 0, w, h).data, rows = new Float64Array(h), cols = new Float64Array(w); let n = 0;
+  for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) if (d[(y * w + x) * 4 + 3] > 40) { rows[y]++; cols[x]++; n++; }
+  if (n < 50) return null;
+  const cut = n * 0.007, lo = a => { let s = 0; for (let k = 0; k < a.length; k++) { s += a[k]; if (s > cut) return k; } return 0; }, hi = a => { let s = 0; for (let k = a.length - 1; k >= 0; k--) { s += a[k]; if (s > cut) return k; } return a.length - 1; };
+  return { x0: lo(cols), x1: hi(cols), y0: lo(rows), y1: hi(rows) };
 }
 async function alignBox(i, url, box) {
-  if (!$('genAlign').checked || !$('genGreen').checked) return box;
+  if (!$('genGreen').checked) return null;
   try {
     const im = await loadImage(url), keyed = chromaKey(im), gb = contentBBox(keyed);
     const pc = renderPuppetBox(i, box, false, 768), pb = contentBBox(pc);
-    if (!gb || !pb) return box;
+    if (!gb || !pb || (gb.x1 - gb.x0) * (gb.y1 - gb.y0) < keyed.width * keyed.height * 0.02) return null;
     const ps = box.w / pc.width;   // 原画キャンバス1pxあたりの画像座標
     const P = { x0: box.x + pb.x0 * ps, x1: box.x + pb.x1 * ps, y0: box.y + pb.y0 * ps, y1: box.y + pb.y1 * ps };
     const k = (P.y1 - P.y0) / Math.max(1, gb.y1 - gb.y0), k0 = box.w / keyed.width;
-    if (!(k > k0 * 0.5 && k < k0 * 2)) return box;   // 極端な結果は合わせない
+    if (!(k > k0 * 0.5 && k < k0 * 2)) return null;   // 極端な結果は合わせない
     const W = keyed.width * k, H = keyed.height * k;
     return { x: (P.x0 + P.x1) / 2 - ((gb.x0 + gb.x1) / 2) * k, y: P.y1 - gb.y1 * k, w: W, h: H, aspect: box.aspect };
-  } catch { return box; }
+  } catch { return null; }
 }
 async function buildFixParts(i, v, fix, green) {
   const t = `EDIT this finished sprite frame. IMAGE 1 is the current frame ${i + 1}. IMAGE 2 is the character reference; keep the character identical to it.\n` +
@@ -1325,11 +1332,11 @@ async function runGen(i, mode, signal) {
     const parts = mode === 'fix' ? await buildFixParts(i, v0, fix, green) : await buildGenParts(i, box, green);
     const url = await callGemini(parts, signal);
     const id = newGenId(); S.gen[id] = url;
-    const outBox = mode === 'fix' ? box : await alignBox(i, url, box);
+    const fit = mode === 'fix' ? (v0.fit || null) : await alignBox(i, url, box);
     const fr = S.frames.indexOf(f) >= 0 ? f : null; if (!fr) return false;   // 生成中にコマが消された
     pushUndo();
     fr.ai = fr.ai || { v: [], cur: -1 };
-    fr.ai.v = fr.ai.v.slice(0, fr.ai.cur + 1); fr.ai.v.push({ id, box: { x: outBox.x, y: outBox.y, w: outBox.w, h: outBox.h, aspect: box.aspect }, sig: mode === 'fix' ? v0.sig : sig }); fr.ai.cur = fr.ai.v.length - 1;
+    fr.ai.v = fr.ai.v.slice(0, fr.ai.cur + 1); fr.ai.v.push({ id, box: { x: box.x, y: box.y, w: box.w, h: box.h, aspect: box.aspect }, fit, sig: mode === 'fix' ? v0.sig : sig }); fr.ai.cur = fr.ai.v.length - 1;
     if (mode === 'fix') $('genFix').value = '';
     thumbDirty(S.frames.indexOf(fr)); afterChange();
     return true;
@@ -1358,6 +1365,7 @@ function renderGenSide() {
   $('genTitle').textContent = `コマ ${i + 1} / ${S.frames.length}`;
   $('genVer').textContent = a && a.v.length ? `${a.cur + 1} / ${a.v.length}` : '—';
   $('genVerPrev').disabled = !a || a.cur <= 0; $('genVerNext').disabled = !a || a.cur >= a.v.length - 1;
+  $('genRawBox').hidden = !v || busy; if (v && $('genRaw').dataset.id !== v.id) { $('genRaw').src = S.gen[v.id]; $('genRaw').dataset.id = v.id; }
   $('genState').textContent = i === 0 ? '1コマ目は立ち絵そのものを使います。' : busy ? '生成中です…' : !v ? 'まだ生成していません（今は切り絵の原画です）。' :
     genStale(i) ? '生成した後に棒人間が変わりました。作り直すと今のポーズになります。' : '生成済みです。';
   $('genOne').textContent = v ? 'このコマを作り直す' : 'このコマを生成';
@@ -1376,6 +1384,7 @@ $('genVerPrev').onclick = () => { const a = S.frames[S.cur].ai; if (a && a.cur >
 $('genVerNext').onclick = () => { const a = S.frames[S.cur].ai; if (a && a.cur < a.v.length - 1) { a.cur++; thumbDirty(S.cur); afterChange(); renderGenSide(); draw(); } };
 $('genDrop').onclick = () => { const a = S.frames[S.cur].ai; if (!a || a.cur < 0) return; pushUndo(); a.v.splice(a.cur, 1); a.cur = Math.min(a.cur, a.v.length - 1); thumbDirty(S.cur); afterChange(); renderGenSide(); draw(); toast('この版を消しました（「戻す」で取り消せます）'); };
 [['gvGen', 'gen'], ['gvSrc', 'src'], ['gvMix', 'mix']].forEach(([id, m]) => $(id).onclick = () => { S.genView = m; renderGenSide(); draw(); });
+$('genAlign').onchange = () => { thumbs.clear(); renderStripSoon(); draw(); };
 $('exUseGen').onchange = () => { thumbs.clear(); renderStripSoon(); draw(); };
 // 保存時に、どのコマからも参照されない生成画像を捨てる
 function genInUse() { const ids = new Set(); for (const f of S.frames) for (const v of f.ai?.v || []) ids.add(v.id); for (const sn of [...undoStack, ...redoStack]) for (const f of sn.frames) for (const v of f.ai?.v || []) ids.add(v.id); return ids; }
