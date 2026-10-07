@@ -1,2 +1,7 @@
-# Stick-Animater
-Create sprite sheet with easy UI
+# Stick Animater
+
+立ち絵をパーツに分けて棒人間（骨格）で動かし、Gemini で清書する iPad / iPhone 向け Web アプリです。
+
+- 使い方：GitHub Pages の URL をブラウザで開く
+- 画像生成：「3 画像生成」の「AI の設定」に Gemini API キーを入力（キーはその端末のブラウザにだけ保存されます）
+- 単一ファイル（index.html）、サーバー不要

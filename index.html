@@ -1,0 +1,1553 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body><title>棒人間アニメーター</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=JetBrains+Mono:wght@500&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+  /* Layout (user sketch): menu bar across the top; left column = delete/reset, part picker + gauges, presets/in-betweens; stage right with the frame strip under it. Deliberately single dark theme so the stage colors read the same everywhere. */
+  :root {
+    --desk: #15171c; --panel: #1e2128; --panel2: #272b34; --line: #343a46;
+    --ink: #ebe7df; --muted: #9a9fab; --accent: #ff8a3d; --accent-ink: #1d0e00;
+    --ok: #57d68d; --err: #ff6161;
+    --font-display: "Dela Gothic One", "Hiragino Sans", sans-serif;
+    --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    --font-num: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--desk); color: var(--ink); font: 14px/1.5 var(--font-body);
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overflow: hidden; }
+  #app { height: 100%; display: grid; grid-template-rows: auto 1fr; }
+  header { display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: var(--panel);
+    border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { margin: 0; font: 18px var(--font-display); letter-spacing: .02em; }
+  header h1 b { color: var(--accent); font-weight: inherit; }
+  .steps { display: flex; gap: 4px; }
+  .steps button { border-radius: 999px; padding: 6px 14px; }
+  .steps button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  .steps button .n { font-family: var(--font-num); margin-right: 4px; }
+  .spacer { flex: 1; }
+  button { background: var(--panel2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
+    padding: 7px 12px; font: inherit; cursor: pointer; white-space: nowrap; touch-action: manipulation; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  button.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  button.small { padding: 4px 9px; font-size: 12px; }
+  button.danger { color: var(--err); }
+  #work { display: grid; grid-template-columns: 350px 1fr; min-height: 0; }
+  #main { display: grid; grid-template-rows: 1fr auto; min-width: 0; min-height: 0; }
+  .mgroup { display: flex; gap: 6px; }
+  .mwrap { position: relative; }
+  #menuPop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; min-width: 250px; display: flex; flex-direction: column; gap: 4px;
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 6px; box-shadow: 0 8px 24px #0008; }
+  #menuPop button { text-align: left; background: transparent; border-color: transparent; }
+  #menuPop button:hover { background: var(--panel); }
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .bigBtns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; position: sticky; top: -10px; z-index: 5; background: var(--desk); padding: 10px 0 6px; margin: -10px 0 -6px; }
+  button.big { padding: 13px 8px; font-size: 16px; font-weight: 700; border-radius: 10px; }
+  .frameRow { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; padding: 0 2px; }
+  .frameRow .seg button { padding: 6px 2px; }
+  .frameRow b { font-size: 13px; color: var(--accent); flex: 1; white-space: nowrap; }
+  .seg.fb { width: 118px; flex: none; }
+  .holdBox { display: inline-flex; align-items: center; gap: 3px; flex: none; }
+  #holdVal { min-width: 1.6em; text-align: center; }
+  #partRadios { display: grid; grid-template-columns: 34px 1fr 1fr 1fr; gap: 2px 4px; align-items: center; }
+  #partRadios .gh { font-size: 11px; color: var(--muted); text-align: center; letter-spacing: .06em; }
+  #partRadios .grp { font: 15px var(--font-display); color: var(--ink); }
+  #partRadios .sub { font-size: 12px; color: var(--muted); }
+  #partRadios .grpLine { grid-column: 1 / -1; border-top: 1px solid var(--line); margin: 1px 0; }
+  .rad { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 3px 4px; border-radius: 8px; font-size: 12px; cursor: pointer; }
+  .rad input { width: 19px; height: 19px; margin: 0; accent-color: var(--accent); flex: none; }
+  .rad i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .rad.on { background: #3a2a1d; box-shadow: inset 0 0 0 1px var(--accent); }
+  .rad.wide { grid-column: span 2; }
+  #side .chips#partSel { display: none; }
+  .palHead { display: flex; justify-content: space-between; align-items: center; margin: 10px 0 4px; font-size: 13px; color: var(--accent); }
+  .note { font-size: 11.5px !important; margin: 6px 0 0 !important; }
+  .seg.tabs { margin-bottom: 8px; }
+  .seg.tabs button { font-size: 13px; padding: 7px 2px; }
+  #tools { background: var(--panel); border-right: 1px solid var(--line); padding: 10px 8px; display: flex;
+    flex-direction: column; gap: 6px; overflow-y: auto; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+  .seg button { padding: 6px 2px; font-size: 12px; }
+  .pen { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 2px; font-size: 12px; line-height: 1.2; }
+  .pen i { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-style: normal;
+    font-size: 11px; color: #111; font-weight: 700; }
+  .pen.on { background: #2f3440; }
+  .tlabel { font-size: 11px; color: var(--muted); text-align: center; margin-top: 6px; letter-spacing: .06em; }
+  #stageWrap { position: relative; min-width: 0; min-height: 0; overflow: hidden;
+    background: radial-gradient(circle at 50% 40%, #232731 0, #15171c 75%); }
+  #cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+  #hint { position: absolute; left: 10px; bottom: 8px; right: 10px; pointer-events: none; font-size: 12px; color: var(--ink);
+    text-shadow: 0 1px 3px #000; }
+  #hint span { background: #15171ccc; padding: 4px 10px; border-radius: 6px; display: inline-block; max-width: 100%; }
+  #stageBtns button.on { background: #3a2a1d; }
+  #side { background: var(--desk); border-right: 1px solid var(--line); overflow-y: auto; padding: 10px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+  #side2:not([hidden]), #side4:not([hidden]) { display: flex; flex-direction: column; gap: 10px; }
+  textarea, input[type=password] { background: var(--panel2); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; width: 100%; box-sizing: border-box; resize: vertical; -webkit-user-select: text; user-select: text; }
+  .seg.three { grid-template-columns: 1fr 1fr 1fr; }
+  .fr .ai { position: absolute; top: 2px; right: 2px; font: 10px var(--font-num); background: var(--accent); color: var(--accent-ink); border-radius: 4px; padding: 0 3px; }
+  .fr .ai.stale { background: #ffd166; }
+  #genBusy { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); background: #000c; padding: 10px 18px; border-radius: 10px; pointer-events: none; }
+  #side h2 { font-size: 13px; margin: 12px 0 6px; color: var(--accent); letter-spacing: .06em; }
+  #side h2:first-child { margin-top: 0; }
+  #side p { margin: 4px 0 8px; color: var(--muted); font-size: 12.5px; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .check { display: flex; gap: 8px; align-items: center; font-size: 13px; margin: 6px 0; }
+  .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, input[type=number] { background: var(--panel2); color: var(--ink); border: 1px solid var(--line); border-radius: 6px;
+    padding: 5px 6px; font: inherit; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; font-size: 12px; border-radius: 999px; }
+  .chip i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .pal { display: grid; grid-template-columns: 1fr; gap: 2px; }
+  .prow { display: grid; grid-template-columns: 92px 32px 1fr 32px 54px; gap: 4px; align-items: center; padding: 2px 4px; border-radius: 6px; }
+  .prow button { padding: 5px 0; font-size: 16px; line-height: 1; }
+  .prow { padding-block: 1px; }
+  .prow.sel { background: #3a2a1d; box-shadow: inset 2px 0 0 var(--accent); }
+  .prow label { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prow input[type=number] { width: 52px; font-family: var(--font-num); font-size: 12px; padding: 3px 4px; text-align: right; }
+  .stepper { display: flex; gap: 3px; }
+  .num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+  #strip { background: var(--panel); border-top: 1px solid var(--line); display: flex; gap: 8px; padding: 6px 8px; align-items: stretch; min-width: 0; }
+  #frames { flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto; scroll-behavior: smooth; }
+  button.arrow { flex: none; width: 46px; padding: 0; font-size: 22px; border-radius: 10px; }
+  .fr { position: relative; flex: none; width: 58px; border: 2px solid var(--line); border-radius: 8px; background: var(--panel2);
+    padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .fr.on { border-color: var(--accent); }
+  .fr canvas { width: 100%; height: 62px; display: block; background: #2b303a; }
+  .fr .lab { font: 11px var(--font-num); padding: 2px 4px; display: flex; justify-content: space-between; }
+  .fr .lab b { color: var(--accent); font-weight: 500; }
+  .stripBtns { display: flex; flex-direction: column; gap: 3px; justify-content: center; flex: none; }
+  .stripBtns button { padding: 3px 8px; }
+  #toast { position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); background: #000d; color: #fff;
+    padding: 8px 16px; border-radius: 8px; font-size: 13px; z-index: 50; max-width: calc(100% - 32px); }
+  .kbd { font-family: var(--font-num); font-size: 11px; color: var(--muted); }
+  hr { border: none; border-top: 1px solid var(--line); margin: 12px 0; }
+  .confirm { background: var(--err) !important; color: #200 !important; border-color: var(--err) !important; }
+  @media (max-width: 1000px) { #work { grid-template-columns: 300px 1fr; } header h1 { font-size: 15px; } .frameRow { flex-wrap: wrap; } .frameRow b { flex-basis: 100%; }
+    .prow { grid-template-columns: 30px 1fr 30px 46px; row-gap: 2px; } .prow label { grid-column: 1 / -1; } .prow input[type=number] { width: 46px; } .rad { font-size: 11px; gap: 4px; padding: 6px 2px; } }
+  @media (max-width: 700px) {
+    #work { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 42%; }
+    #side { grid-row: 2; border-right: none; border-top: 1px solid var(--line); }
+    #main { grid-row: 1; min-width: 0; }
+    /* iPhone: タイトルを隠し、タブとボタンは横スクロールの1〜2行に収める */
+    header { padding: 4px 8px; gap: 6px; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    header h1, header .spacer { display: none; }
+    header > * { flex: none; }
+    .steps button { padding: 5px 9px; font-size: 12px; }
+    #strip { padding: 4px; gap: 4px; }
+    button.arrow { width: 34px; font-size: 18px; }
+    .stripBtns .row { display: none; }
+    .fr { width: 50px; } .fr canvas { height: 54px; }
+    button.big { padding: 10px 4px; font-size: 14px; }
+    #partRadios { grid-template-columns: 30px 1fr 1fr 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div id="app">
+  <header id="menubar">
+    <h1>棒人間<b>アニメーター</b></h1>
+    <div class="steps" role="tablist">
+      <button id="tab1" data-step="1"><span class="n">1</span>骨格づくり</button>
+      <button id="tab2" data-step="2"><span class="n">2</span>コマ作成</button>
+      <button id="tab4" data-step="4"><span class="n">3</span>画像生成</button>
+      <button id="tab3" data-step="3"><span class="n">4</span>再生・書き出し</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="mgroup" id="stageBtns">
+      <button id="pvBtn" class="small">▶ プレビュー</button>
+      <button id="tglOnion" class="small">前のコマ</button>
+      <button id="tglSkel" class="small">骨格</button>
+      <button id="zoomOut" class="small" aria-label="縮小">−</button><button id="fitBtn" class="small">全体表示</button><button id="zoomIn" class="small" aria-label="拡大">＋</button>
+    </div>
+    <div class="mgroup">
+      <button id="undoBtn" class="small" title="元に戻す" aria-label="元に戻す">↶</button>
+      <button id="redoBtn" class="small" title="やり直す" aria-label="やり直す">↷</button>
+    </div>
+    <div class="mwrap">
+      <button id="menuBtn" class="small" aria-haspopup="true" aria-expanded="false">≡ メニュー</button>
+      <div id="menuPop" hidden>
+        <button id="menuOnion">前のコマを非表示にする</button>
+        <button id="menuLoad">画像を読み込む</button>
+        <button id="menuSave">プロジェクトをファイルに保存</button>
+        <button id="menuOpen">プロジェクトをファイルから開く</button>
+      </div>
+    </div>
+    <input id="fileImg" type="file" accept="image/*" hidden>
+  </header>
+
+  <div id="work">
+    <aside id="side">
+      <div id="side1" class="box">
+        <h2>立ち絵</h2>
+        <div class="row"><button id="loadBtn2">画像を選ぶ</button><button id="sampleBtn" class="small">サンプルに戻す</button></div>
+        <label class="check" style="display:block;margin-top:8px">背景の抜き具合 <span id="tolVal" class="num"></span>
+          <input id="tol" type="range" min="5" max="95" value="45"></label>
+        <h2>作業</h2>
+        <div class="seg">
+          <button id="sub_rig">骨格を合わせる</button><button id="sub_parts">パーツを直す</button>
+        </div>
+        <div id="rigHelp">
+          <p>点をペンか指でつかんで、立ち絵の関節に合わせてください。画面は固定です。2本指か＋−ボタンで拡大縮小できます。</p>
+          <div class="row"><button id="autoRig" class="small">自動で配置し直す</button><button id="swapFB" class="small">前と後ろを入れ替え</button></div>
+          <p style="margin-top:8px">「前」は手前に重なる側の腕・脚です。</p>
+        </div>
+        <div id="partsHelp" hidden>
+          <p>骨格に合わせて自動で色分けしています。羽やマントなど、違うパーツに入った部分は色を選んでペンで塗り直してください。</p>
+          <div class="chips" id="partChips"></div>
+          <label class="check" style="display:block;margin-top:8px">ブラシの太さ <span id="brushVal" class="num"></span>
+            <input id="brush" type="range" min="4" max="80" value="24"></label>
+          <label class="check"><input type="checkbox" id="fingerPaint">指でも塗る（オフなら指は画面移動）</label>
+          <div class="row"><button id="resegBtn" class="small">自動で分け直す</button></div>
+        </div>
+        <hr>
+        <button id="toStep2" class="primary" style="width:100%">次へ：コマ作成</button>
+      </div>
+      <!-- step 2: スケッチの配置（削除・リセット／パーツ選択／プリセット・中割り） -->
+      <div id="side2" hidden>
+        <div class="bigBtns">
+          <button id="railDelFrame" class="big danger">削除</button>
+          <button id="railResetFrame" class="big">リセット</button>
+          <button id="sideUndo" class="big" aria-label="元に戻す">↶ 戻す</button>
+        </div>
+        <div class="frameRow">
+          <b id="frameTitle">コマ</b>
+          <div class="seg fb"><button id="sideF" title="胸側が見えている">F 胸側</button><button id="sideB" title="背中側が見えている">B 背中</button></div>
+          <span class="holdBox"><span class="kbd">表示</span><button class="small" id="holdMinus">−</button><span id="holdVal" class="num"></span><button class="small" id="holdPlus">＋</button></span>
+        </div>
+        <section class="box" id="partBox">
+          <div id="partRadios" role="radiogroup" aria-label="動かすパーツ"></div>
+          <div class="chips" id="partSel"></div>
+          <div class="palHead" title="画面の点やパーツをペンでつかんでも動かせます。回転は90°で真横、180°で裏返し。"><span><span id="selName"></span> の調整</span><button id="resetPart" class="small">このパーツを戻す</button></div>
+          <div class="pal" id="palette"></div>
+          
+        </section>
+        <section class="box" id="psBox">
+          <div class="seg tabs"><button id="tabPs">プリセット</button><button id="tabIb">中割り</button></div>
+          <div id="psPane">
+        <div class="row">
+          <select id="psName" style="flex:1"></select>
+          <select id="psDir"><option value="right">右向き</option><option value="left">左向き</option></select>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <select id="psMode"><option value="replace">今のコマと置き換え</option><option value="append">最後に追加</option></select>
+          <label class="check" style="margin:0"><input type="checkbox" id="psIb" checked>中割りも入れる</label>
+        </div>
+        <button id="psBtn" style="width:100%;margin-top:6px">プリセットを読み込む</button>
+        <p class="note">前の手・前足＝キャラが向いている側の手足です。</p>
+          </div>
+          <div id="ibPane" hidden>
+        <div class="seg"><button id="ibModeAdd">コマを追加</button><button id="ibModeFix">今のコマを修正</button></div>
+        <div class="row" id="ibAddRow" style="margin-top:6px">
+          <span style="font-size:12px">次のコマとの間に</span>
+          <select id="ibN"><option>1</option><option selected>2</option><option>3</option><option>4</option></select>
+          <span style="font-size:12px">枚を追加</span>
+        </div>
+        <div id="ibFixRow" hidden style="margin-top:6px">
+          <div class="row"><span style="font-size:12px">このコマから</span><select id="ibTo"></select><span style="font-size:12px">枚うしろのコマまで</span></div>
+          <p id="ibFixNote" style="margin:4px 0 0"></p>
+        </div>
+        <div class="row" style="margin-top:6px"><span style="font-size:12px">動きの緩急</span>
+          <select id="ibEase"><option value="linear">等速</option><option value="smooth" selected>なめらか</option><option value="in">だんだん速く</option><option value="out">だんだん遅く</option></select></div>
+        <button id="ibBtn" style="width:100%;margin-top:6px">中割りを自動生成</button>
+          </div>
+        </section>
+      </div>
+      <!-- step 4: 画像生成（Gemini） -->
+      <div id="side4" hidden>
+        <section class="box">
+          <h2>このコマ</h2>
+          <div class="row" style="justify-content:space-between"><b id="genTitle" style="color:var(--accent)">コマ</b>
+            <div class="row" style="gap:4px"><button id="genVerPrev" class="small" aria-label="前の版">◀</button><span id="genVer" class="num" style="min-width:3.5em;text-align:center"></span><button id="genVerNext" class="small" aria-label="次の版">▶</button></div></div>
+          <p id="genState" style="margin:4px 0 8px"></p>
+          <div class="seg"><button id="genOne" class="primary">このコマを生成</button><button id="genToPose">棒人間で直す</button></div>
+          <label style="display:block;font-size:12px;margin-top:10px;color:var(--muted)">プロンプトで修正（例：前の手をもう少し胸側に）</label>
+          <textarea id="genFix" rows="2" placeholder="直したいところを書いてください"></textarea>
+          <div class="row" style="margin-top:6px"><button id="genFixBtn" style="flex:1">プロンプトで修正</button><button id="genDrop" class="small danger">この版を消す</button></div>
+          <h2>画面の表示</h2>
+          <div class="seg three"><button id="gvGen">生成画像</button><button id="gvSrc">原画</button><button id="gvMix">重ねる</button></div>
+        </section>
+        <section class="box">
+          <h2>まとめて生成</h2>
+          <div class="row"><button id="genAll" style="flex:1">未生成のコマを生成</button><button id="genStop" class="small" disabled>停止</button></div>
+          <button id="genRedoAll" class="small" style="width:100%;margin-top:6px">全コマ作り直し</button>
+          <label class="check"><input type="checkbox" id="genChain" checked>前のコマの生成画像も参考にする</label>
+          <p id="genGlobal" class="note"></p>
+        </section>
+        <section class="box">
+          <h2>AI の設定</h2>
+          <label style="display:block;font-size:12px;color:var(--muted)">Gemini API キー（このブラウザにだけ保存）</label>
+          <input type="password" id="genKey" placeholder="AIza..." autocomplete="off" style="width:100%">
+          <p class="note"><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--accent)">Google AI Studio</a> で発行できます。</p>
+          <label style="display:block;font-size:12px;color:var(--muted);margin-top:8px">モデル</label>
+          <select id="genModel" style="width:100%"><option value="gemini-2.5-flash-image">gemini-2.5-flash-image（速い・安い）</option><option value="gemini-3-pro-image-preview">gemini-3-pro-image-preview（高品質）</option></select>
+          <label style="display:block;font-size:12px;color:var(--muted);margin-top:8px">キャラクターの補足（任意）</label>
+          <textarea id="genNote" rows="2" placeholder="例：金の翼と赤いマントの格闘家。羽根のスカート。"></textarea>
+          <label class="check"><input type="checkbox" id="genGreen" checked>グリーンバックで生成して透過する</label>
+        </section>
+      </div>
+      <div id="side3" class="box" hidden>
+        <h2>再生</h2>
+        <div class="row"><button id="playBtn" class="primary">▶ 再生</button>
+          <label class="check"><input type="checkbox" id="pingpong">往復</label></div>
+        <label class="check" style="display:block">速さ <span id="fpsVal" class="num"></span>
+          <input id="fps" type="range" min="2" max="30" value="12"></label>
+        <h2>書き出し</h2>
+        <div class="row"><span style="font-size:12px">背景</span>
+          <select id="exBg"><option value="none">透明</option><option value="green">グリーン</option></select>
+          <span style="font-size:12px">並べ方</span>
+          <select id="exCols"><option value="row">横一列</option><option value="3">3列</option><option value="4">4列</option><option value="col">縦一列</option></select>
+        </div>
+        <label class="check"><input type="checkbox" id="exHold">表示時間ぶんコマを繰り返す</label>
+        <label class="check"><input type="checkbox" id="exUseGen" checked>画像生成した絵を使う（再生にも反映）</label>
+        <div class="row" style="margin-top:6px">
+          <button id="exSheet">スプライトシート PNG</button>
+          <button id="exZip">コマごと PNG（ZIP）</button>
+        </div>
+        <h2>プロジェクト</h2>
+        <p>作業内容はこのブラウザに自動保存されます。別の端末に移すときはファイルに保存してください。</p>
+        <div class="row"><button id="saveProj" class="small">ファイルに保存</button><button id="loadProj" class="small">ファイルから開く</button>
+          <input id="fileProj" type="file" accept=".json,application/json" hidden></div>
+        <h2>次の段階</h2>
+        <p>効果線と文字は次の段階で追加します。</p>
+      </div>
+    </aside>
+    <div id="main">
+      <div id="stageWrap">
+        <canvas id="cv"></canvas>
+        <div id="hint"><span id="hintText"></span></div>
+        <div id="genBusy" hidden>生成中…</div>
+      </div>
+      <div id="strip">
+        <button id="prevFr" class="arrow" aria-label="前のコマ">◁</button>
+        <div id="frames"></div>
+        <button id="nextFr" class="arrow" aria-label="次のコマ">▷</button>
+        <div class="stripBtns">
+          <button id="addFrame" class="small">＋ 追加</button>
+          <button id="copyPrev" class="small">前をコピー</button>
+          <div class="row" style="gap:4px;flex-wrap:nowrap"><button id="moveL" class="small" title="このコマを前へ移動">◀ 順番</button><button id="moveR" class="small" title="このコマを後ろへ移動">順番 ▶</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast" hidden></div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const SAMPLE = null;
+const MAX_SIDE = 1024, MAX_FRAMES = 24;
+const rad = d => d * Math.PI / 180, deg = r => r * 180 / Math.PI;
+const normDeg = d => { d = ((d + 180) % 360 + 360) % 360 - 180; return Math.round(d * 10) / 10; };
+const clone = o => JSON.parse(JSON.stringify(o));
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+// ---------------- 骨格の定義 ----------------
+// 前 = 手前に重なる側、後ろ = 奥の側。みぞおち（spine）で背骨が曲がる
+const BONES = [
+  { k: 'waist', a: 'pelvis', b: 'spine', p: -1, name: '腰', w: 2.0, col: '#a493ff' },
+  { k: 'chest', a: 'spine', b: 'neck', p: 0, name: '胸', w: 2.0, col: '#ebe7df' },
+  { k: 'head', a: 'neck', b: 'head', p: 1, name: '頭', w: 1.4, col: '#ff5a5f' },
+  { k: 'fU', a: 'fSh', b: 'fEl', p: 1, name: '前の上腕', w: 1, col: '#ff9f1c' },
+  { k: 'fF', a: 'fEl', b: 'fHa', p: 3, name: '前の前腕', w: 1, col: '#ffc977' },
+  { k: 'bU', a: 'bSh', b: 'bEl', p: 1, name: '後ろの上腕', w: 1, col: '#d9c22e' },
+  { k: 'bF', a: 'bEl', b: 'bHa', p: 5, name: '後ろの前腕', w: 1, col: '#f1e79a' },
+  { k: 'fT', a: 'fHi', b: 'fKn', p: -1, name: '前の太もも', w: 1.15, col: '#3f8efc' },
+  { k: 'fS', a: 'fKn', b: 'fFo', p: 7, name: '前のすね', w: 1, col: '#93bcff' },
+  { k: 'bT', a: 'bHi', b: 'bKn', p: -1, name: '後ろの太もも', w: 1.15, col: '#1fb5a6' },
+  { k: 'bS', a: 'bKn', b: 'bFo', p: 9, name: '後ろのすね', w: 1, col: '#93e2d8' },
+];
+const BI = Object.fromEntries(BONES.map((b, i) => [b.k, i]));
+const DRAW_ORDER = [5, 6, 9, 10, 0, 1, 2, 7, 8, 3, 4];
+const JOINTS = ['head', 'neck', 'spine', 'pelvis', 'fSh', 'bSh', 'fEl', 'fHa', 'bEl', 'bHa', 'fHi', 'bHi', 'fKn', 'fFo', 'bKn', 'bFo'];
+const JOINT_COL = { head: '#ff5a5f', neck: '#ebe7df', spine: '#a493ff', pelvis: '#c77dff', fSh: '#ff9f1c', fEl: '#ff9f1c', fHa: '#ff9f1c',
+  bSh: '#d9c22e', bEl: '#d9c22e', bHa: '#d9c22e', fHi: '#3f8efc', fKn: '#3f8efc', fFo: '#3f8efc', bHi: '#1fb5a6', bKn: '#1fb5a6', bFo: '#1fb5a6' };
+// 関節の点 → つかんだときに選ばれるパーツ
+const JOINT_PART = { pelvis: 'root', spine: 'waist', neck: 'chest', head: 'head', fEl: 'fU', fHa: 'fF', bEl: 'bU', bHa: 'bF',
+  fKn: 'fT', fFo: 'fS', bKn: 'bT', bFo: 'bS' };
+const DRAG_JOINTS_POSE = Object.keys(JOINT_PART);
+const PART_LIST = [{ k: 'root', name: '全身', col: '#c77dff' }, ...BONES.map(b => ({ k: b.k, name: b.name, col: b.col }))];
+const PART_NAME = Object.fromEntries(PART_LIST.map(p => [p.k, p.name]));
+const GAUGES = [
+  { f: 'dy', name: '位置 上下', min: -300, max: 300 },
+  { f: 'dx', name: '位置 左右', min: -300, max: 300 },
+  { f: 'ang', name: '角度（傾き）', min: -180, max: 180 },
+  { f: 'turn', name: '回転（ひねり）', min: -180, max: 180 },
+];
+const FIELDS = ['dx', 'dy', 'ang', 'turn'];
+const PZ = { dx: 0, dy: 0, ang: 0, turn: 0 };
+const pg = (pose, k) => ({ ...PZ, ...(pose[k] || {}) });
+function setP(pose, k, f, v) { pose[k] = { ...pg(pose, k), [f]: v }; }
+const zeroPose = () => ({});
+const newFrame = (pose) => ({ pose: pose || zeroPose(), side: 'F', hold: 1 });
+// 旧形式（角度だけのポーズ）を読み替える
+function migratePose(p) {
+  if (!p || typeof p !== 'object') return {};
+  if (typeof p.x !== 'number' && typeof p.tilt !== 'number' && typeof p.torso !== 'number') return p;
+  const n = { root: { ...PZ, dx: p.x || 0, dy: p.y || 0, ang: p.tilt || 0 }, waist: { ...PZ, ang: p.torso || 0 } };
+  for (const k of ['head', 'fU', 'fF', 'bU', 'bF', 'fT', 'fS', 'bT', 'bS']) if (p[k]) n[k] = { ...PZ, ang: p[k] };
+  return n;
+}
+
+// ---------------- 状態 ----------------
+const S = {
+  step: 1, sub: 'rig', partBrush: 0, selPart: 'root', ibMode: 'add',
+  img: null,          // { src, w, h }
+  tol: 45,
+  rig: null,          // { J: {name:{x,y}}, headR }
+  labels: null,       // Uint8Array w*h, 255 = 背景
+  frames: [newFrame()],
+  cur: 0, sel: null, fps: 12,
+};
+let base = null;      // 元画像キャンバス（作業解像度）
+let fg = null;        // 背景を抜いたキャンバス
+let alpha = null;     // Uint8Array
+let parts = null, partsDirty = true, overlay = null;
+let view = { k: 1, ox: 0, oy: 0 };
+const undoStack = [], redoStack = [];
+
+// ---------------- ユーティリティ ----------------
+function toast(msg, ms = 3200) {
+  const t = $('toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, ms);
+}
+function loadImage(src) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; }); }
+function fileToDataURL(f) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); }); }
+function mkCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function segDist(p, a, b) {
+  const vx = b.x - a.x, vy = b.y - a.y, L = vx * vx + vy * vy;
+  let t = L ? ((p.x - a.x) * vx + (p.y - a.y) * vy) / L : 0; t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - a.x - t * vx, p.y - a.y - t * vy);
+}
+// 端末のブラウザ・Claude のどちらでもファイルを保存できるようにする
+async function saveFile(filename, blob) {
+  try {
+    if (window.claude?.use) {
+      const dl = await window.claude.use('downloads');
+      if (dl) { await dl.save({ filename, data: blob }); toast('保存しました'); return; }
+    }
+  } catch (e) { if (e?.code === 'declined') return; if (e?.code && e.code !== 'unavailable') { toast('保存できませんでした：' + (e.message || e.code)); return; } }
+  const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+const canvasBlob = c => new Promise(r => c.toBlob(r, 'image/png'));
+
+// ---------------- 背景抜き ----------------
+function computeForeground() {
+  const { w, h } = S.img;
+  const g0 = base.getContext('2d', { willReadFrequently: true });
+  const d = g0.getImageData(0, 0, w, h), p = d.data;
+  fg = mkCanvas(w, h); alpha = new Uint8Array(w * h);
+  // 四隅の色を背景色とみなす
+  const samples = []; const s = 6;
+  for (const [cx, cy] of [[0, 0], [w - s, 0], [0, h - s], [w - s, h - s]])
+    for (let y = cy; y < cy + s; y++) for (let x = cx; x < cx + s; x++) { const k = (y * w + x) * 4; samples.push([p[k], p[k + 1], p[k + 2], p[k + 3]]); }
+  const med = i => samples.map(v => v[i]).sort((a, b) => a - b)[samples.length >> 1];
+  const bg = [med(0), med(1), med(2), med(3)];
+  const out = new ImageData(new Uint8ClampedArray(p), w, h), o = out.data;
+  const t = S.tol / 100;
+  const green = bg[3] > 200 && bg[1] - Math.max(bg[0], bg[2]) > 60;
+  for (let i = 0, k = 0; i < w * h; i++, k += 4) {
+    let a = o[k + 3];
+    if (bg[3] < 50) { /* 透過PNGはそのまま */ }
+    else if (green) {
+      const r = o[k], gg = o[k + 1], b = o[k + 2], mx = Math.max(r, b), diff = (gg - mx) / 255;
+      const hi = 0.45 - t * 0.35, lo = 0.12 - t * 0.08;
+      if (diff > hi) a = 0;
+      else if (diff > lo) { a = Math.round(a * Math.max(0, Math.min(1, 1 - (diff - lo) / (hi - lo)))); o[k + 1] = mx; }
+      else if (gg > mx) o[k + 1] = (gg + mx) >> 1;
+    } else {
+      const dd = Math.hypot(o[k] - bg[0], o[k + 1] - bg[1], o[k + 2] - bg[2]);
+      const lo = 10 + t * 60, hi = lo + 40;
+      a = Math.round(a * Math.max(0, Math.min(1, (dd - lo) / (hi - lo))));
+    }
+    o[k + 3] = a; alpha[i] = a;
+  }
+  fg.getContext('2d').putImageData(out, 0, 0);
+}
+function fgBox() {
+  const { w, h } = S.img; let x0 = w, y0 = h, x1 = 0, y1 = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (alpha[y * w + x] > 60) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 <= x0) return { x: 0, y: 0, w, h };
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+// ---------------- 骨格の初期配置 ----------------
+function autoRig() {
+  const b = fgBox(), cx = b.x + b.w / 2, H = b.h, at = (fx, fy) => ({ x: cx + fx * H, y: b.y + fy * H });
+  S.rig = {
+    headR: 0.075 * H,
+    J: {
+      head: at(0, 0.10), neck: at(0, 0.2), spine: at(0, 0.36), pelvis: at(0, 0.5),
+      fSh: at(-0.09, 0.24), bSh: at(0.09, 0.24), fEl: at(-0.13, 0.36), fHa: at(-0.12, 0.47),
+      bEl: at(0.13, 0.36), bHa: at(0.12, 0.47), fHi: at(-0.06, 0.52), bHi: at(0.06, 0.52),
+      fKn: at(-0.08, 0.73), fFo: at(-0.09, 0.95), bKn: at(0.08, 0.73), bFo: at(0.09, 0.95),
+    },
+  };
+}
+function ensureSpine(rig) {
+  const J = rig.J; if (!J.spine) J.spine = { x: J.pelvis.x + (J.neck.x - J.pelvis.x) * 0.42, y: J.pelvis.y + (J.neck.y - J.pelvis.y) * 0.42 };
+}
+
+// ---------------- パーツ分け ----------------
+function boneSegs() {
+  const J = S.rig.J;
+  return BONES.map(b => {
+    let a = J[b.a], e = J[b.b];
+    if (b.k === 'fF' || b.k === 'bF' || b.k === 'fS' || b.k === 'bS') { // 手先・足先を少し延長
+      const f = b.k.endsWith('F') ? 0.3 : 0.18; e = { x: e.x + (e.x - a.x) * f, y: e.y + (e.y - a.y) * f };
+    }
+    return { a, b: e, w: b.w };
+  });
+}
+// 胴体（腰・胸）はみぞおちの高さで上下に分ける
+function splitTorso(L, oldSingleTorso) {
+  const { w, h } = S.img, J = S.rig.J, P = J.pelvis, N = J.neck;
+  const vx = N.x - P.x, vy = N.y - P.y, l2 = vx * vx + vy * vy || 1, sp = ((J.spine.x - P.x) * vx + (J.spine.y - P.y) * vy) / l2;
+  for (let i = 0; i < w * h; i++) {
+    const l = L[i]; if (l === 255) continue;
+    if (oldSingleTorso && l !== 0) { L[i] = l + 1; continue; }
+    if (l > 1) continue;
+    const x = i % w, y = (i / w) | 0; L[i] = ((x - P.x) * vx + (y - P.y) * vy) / l2 > sp ? 1 : 0;
+  }
+  return L;
+}
+function segment() {
+  const { w, h } = S.img, segs = boneSegs(), J = S.rig.J, hr = S.rig.headR, HB = BI.head;
+  const L = new Uint8Array(w * h).fill(255);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x; if (alpha[i] < 8) continue;
+    const p = { x, y }; let best = 1e9, bi = 0;
+    for (let s = 0; s < segs.length; s++) {
+      let d = segDist(p, segs[s].a, segs[s].b);
+      if (s === HB) { const dh = dist(p, J.head); d = dh > hr * 1.6 ? 1e9 : Math.min(d, Math.max(0, dh - hr)); }
+      d /= segs[s].w; if (d < best) { best = d; bi = s; }
+    }
+    L[i] = bi;
+  }
+  S.labels = splitTorso(L); partsDirty = true; buildOverlay();
+}
+function boneRadius() {
+  const { w, h } = S.img, cnt = new Array(BONES.length).fill(0);
+  for (let i = 0; i < w * h; i++) if (S.labels[i] < 255) cnt[S.labels[i]]++;
+  return BONES.map((b, i) => { const len = Math.max(10, dist(S.rig.J[b.a], S.rig.J[b.b])); return Math.max(5, Math.min(0.09 * h, cnt[i] / len * 0.55)); });
+}
+function buildParts() {
+  if (!S.labels) segment();
+  const { w, h } = S.img, J = S.rig.J, R = boneRadius();
+  const src = fg.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data, L = S.labels;
+  parts = BONES.map((b, bi) => {
+    const pj = J[b.a], r2 = (R[bi] * 1.15) ** 2, useDisc = bi !== 0;
+    const inc = i => { const l = L[i]; if (l === 255) return false; if (l === bi) return true;
+      if (!useDisc) return false; const x = i % w, y = (i / w) | 0; return (x - pj.x) ** 2 + (y - pj.y) ** 2 < r2; };
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let i = 0; i < w * h; i++) if (inc(i)) { const x = i % w, y = (i / w) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 < 0) return null;
+    const pw = x1 - x0 + 1, ph = y1 - y0 + 1, c = mkCanvas(pw, ph), id = new ImageData(pw, ph), o = id.data;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const i = y * w + x; if (!inc(i)) continue; const k = i * 4, q = ((y - y0) * pw + (x - x0)) * 4;
+      o[q] = src[k]; o[q + 1] = src[k + 1]; o[q + 2] = src[k + 2]; o[q + 3] = src[k + 3];
+    }
+    c.getContext('2d').putImageData(id, 0, 0);
+    const al = new Uint8Array(pw * ph); for (let q = 0; q < al.length; q++) al[q] = o[q * 4 + 3];
+    return { c, ox: x0, oy: y0, pw, ph, al };
+  });
+  partsDirty = false;
+}
+function hexRGB(h) { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+const BONE_RGB = BONES.map(b => hexRGB(b.col));
+function buildOverlay(x0 = 0, y0 = 0, x1, y1) {
+  const { w, h } = S.img; if (x1 == null) { x1 = w - 1; y1 = h - 1; }
+  if (!overlay || overlay.width !== w) overlay = mkCanvas(w, h);
+  x0 = Math.max(0, x0 | 0); y0 = Math.max(0, y0 | 0); x1 = Math.min(w - 1, x1 | 0); y1 = Math.min(h - 1, y1 | 0);
+  const ow = x1 - x0 + 1, oh = y1 - y0 + 1; if (ow <= 0 || oh <= 0) return;
+  const id = new ImageData(ow, oh), o = id.data;
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const l = S.labels[y * w + x]; if (l === 255) continue; const q = ((y - y0) * ow + (x - x0)) * 4, c = BONE_RGB[l];
+    o[q] = c[0]; o[q + 1] = c[1]; o[q + 2] = c[2]; o[q + 3] = 150;
+  }
+  overlay.getContext('2d').putImageData(id, x0, y0);
+}
+
+// ---------------- 順運動学（ポーズ → 各パーツの位置） ----------------
+// 2x3 アフィン行列 [a,b,c,d,e,f]：x' = a x + c y + e, y' = b x + d y + f
+const mMul = (m, n) => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]];
+const mT = (x, y) => [1, 0, 0, 1, x, y];
+const mR = r => { const c = Math.cos(r), s = Math.sin(r); return [c, s, -s, c, 0, 0]; };
+const mS = (sx, sy) => [sx, 0, 0, sy, 0, 0];
+const mAp = (m, p) => ({ x: m[0] * p.x + m[2] * p.y + m[4], y: m[1] * p.x + m[3] * p.y + m[5] });
+const mInv = m => { const det = m[0] * m[3] - m[1] * m[2] || 1e-9; const a = m[3] / det, b = -m[1] / det, c = -m[2] / det, d = m[0] / det; return [a, b, c, d, -(a * m[4] + c * m[5]), -(b * m[4] + d * m[5])]; };
+const mLinInv = (m, v) => { const det = m[0] * m[3] - m[1] * m[2] || 1e-9; return { x: (m[3] * v.x - m[2] * v.y) / det, y: (-m[1] * v.x + m[0] * v.y) / det }; };
+// 回転（ひねり）は奥行き方向の回転として、横幅の縮み・裏返しで表す
+const turnScale = t => { const c = Math.cos(rad(t)); return Math.abs(c) < 0.05 ? 0.05 * (c < 0 ? -1 : 1) : c; };
+const mAround = (a, m) => mMul(mT(a.x, a.y), mMul(m, mT(-a.x, -a.y)));
+const restAngle = i => { const b = BONES[i], J = S.rig.J; return Math.atan2(J[b.b].y - J[b.a].y, J[b.b].x - J[b.a].x); };
+function solve(pose) {
+  const J = S.rig.J, P0 = J.pelvis, R = pg(pose, 'root');
+  const W0 = mMul(mT(R.dx, R.dy), mAround(P0, mMul(mR(rad(R.ang)), mS(turnScale(R.turn), 1))));
+  const W = [], D = [], A = [];
+  BONES.forEach((b, i) => {
+    const q = pg(pose, b.k), a = J[b.a], parent = b.p < 0 ? W0 : W[b.p];
+    const m = mMul(mT(q.dx, q.dy), mMul(parent, mAround(a, mR(rad(q.ang)))));
+    W[i] = m; A[i] = mAp(m, a);
+    // ひねりはそのパーツだけ（子パーツには伝えない）
+    D[i] = q.turn ? mMul(m, mAround(a, mMul(mR(restAngle(i)), mMul(mS(1, turnScale(q.turn)), mR(-restAngle(i)))))) : m;
+  });
+  const PJ = { pelvis: mAp(W0, P0) };
+  BONES.forEach((b, i) => { if (!PJ[b.a]) PJ[b.a] = A[i]; PJ[b.b] = mAp(W[i], J[b.b]); });
+  return { W0, W, D, A, PJ };
+}
+// ボーン i の先端を target の方向へ向ける
+function setDir(pose, i, t) {
+  const sol = solve(pose), b = BONES[i], an = sol.A[i];
+  if (dist(an, t) < 1) return;
+  const v = mLinInv(b.p < 0 ? sol.W0 : sol.W[b.p], { x: t.x - an.x, y: t.y - an.y });
+  setP(pose, b.k, 'ang', normDeg(deg(Math.atan2(v.y, v.x) - restAngle(i))));
+}
+// 2ボーンIK（曲がる向きは今のポーズを保つ）
+function ik(pose, u, f, t) {
+  const sol = solve(pose), bu = BONES[u], bf = BONES[f];
+  const a = sol.A[u], el = sol.PJ[bu.b], ha = sol.PJ[bf.b], L1 = dist(a, el), L2 = dist(el, ha);
+  let cross = (el.x - a.x) * (ha.y - a.y) - (el.y - a.y) * (ha.x - a.x);
+  if (Math.abs(cross) < 1e-3) cross = 1;
+  const sigma = -Math.sign(cross);
+  const dd = Math.max(Math.abs(L1 - L2) + 0.5, Math.min(L1 + L2 - 0.5, dist(a, t)));
+  const al = Math.acos(Math.max(-1, Math.min(1, (L1 * L1 + dd * dd - L2 * L2) / (2 * L1 * dd))));
+  const baseAng = Math.atan2(t.y - a.y, t.x - a.x) + sigma * al;
+  setDir(pose, u, { x: a.x + L1 * Math.cos(baseAng), y: a.y + L1 * Math.sin(baseAng) });
+  setDir(pose, f, t);
+}
+function lerpPose(A, B, t) {
+  const out = {};
+  for (const k of PART_LIST.map(p => p.k)) {
+    const a = pg(A, k), b = pg(B, k), o = {};
+    for (const f of FIELDS) { let d = b[f] - a[f]; if (f === 'ang' || f === 'turn') d = ((d % 360) + 540) % 360 - 180; o[f] = Math.round((a[f] + d * t) * 10) / 10; }
+    if (o.dx || o.dy || o.ang || o.turn) out[k] = o;
+  }
+  return out;
+}
+// 画面上の点にあるパーツ（手前から順に探す）
+function pickPart(pose, ip) {
+  if (partsDirty || !parts) buildParts();
+  const sol = solve(pose);
+  for (let n = DRAW_ORDER.length - 1; n >= 0; n--) {
+    const i = DRAW_ORDER[n], pt = parts[i]; if (!pt) continue;
+    const r = mAp(mInv(sol.D[i]), ip), x = Math.floor(r.x - pt.ox), y = Math.floor(r.y - pt.oy);
+    if (x >= 0 && y >= 0 && x < pt.pw && y < pt.ph && pt.al[y * pt.pw + x] > 40) return BONES[i].k;
+  }
+  return null;
+}
+
+// ---------------- 描画 ----------------
+const cv = $('cv'); let ctx = cv.getContext('2d'); let dpr = 1;
+function resize() {
+  const r = cv.getBoundingClientRect(); dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr)); draw();
+}
+// 立ち絵の周りに余白を取った作業キャンバス（大きく動かしても切れない）
+function area() { const px = Math.round(S.img.w * 0.45), py = Math.round(S.img.h * 0.2); return { x: -px, y: -py, w: S.img.w + px * 2, h: S.img.h + py * 2 }; }
+function zoomBy(f) {
+  const r = cv.getBoundingClientRect(), c = { x: r.width / 2, y: r.height / 2 }, k = Math.max(0.1, Math.min(12, view.k * f));
+  const ix = (c.x - view.ox) / view.k, iy = (c.y - view.oy) / view.k; view = { k, ox: c.x - ix * k, oy: c.y - iy * k }; draw();
+}
+function fit() {
+  if (!S.img) return; const r = cv.getBoundingClientRect(), pad = 8, A = area();
+  view.k = Math.min((r.width - pad * 2) / A.w, (r.height - pad * 2) / A.h);
+  view.ox = (r.width - A.w * view.k) / 2 - A.x * view.k; view.oy = (r.height - A.h * view.k) / 2 - A.y * view.k; draw();
+}
+const toImg = (cx, cy) => ({ x: (cx - view.ox) / view.k, y: (cy - view.oy) / view.k });
+function curPose() { return S.cur === 0 ? zeroPose() : S.frames[S.cur].pose; }
+
+function drawPuppet(g, pose, alphaMul = 1) {
+  if (partsDirty || !parts) buildParts();
+  const sol = solve(pose);
+  g.save(); g.globalAlpha *= alphaMul;
+  for (const i of DRAW_ORDER) {
+    const pt = parts[i]; if (!pt) continue;
+    g.save(); g.transform(...sol.D[i]); g.drawImage(pt.c, pt.ox, pt.oy); g.restore();
+  }
+  g.restore();
+  return sol;
+}
+function drawSkeleton(g, PJ, opts = {}) {
+  const k = view.k, lw = (opts.lw || 2) / k, jr = (opts.jr || 6) / k;
+  const baseA = opts.alpha ?? 0.4;
+  g.save(); g.globalAlpha = baseA; g.lineCap = 'round'; g.lineJoin = 'round';
+  const line = (a, b, col) => { g.strokeStyle = '#0006'; g.lineWidth = lw + 1.5 / k; g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+    g.strokeStyle = col; g.lineWidth = lw; g.stroke(); };
+  line(PJ.pelvis, PJ.spine, '#a493ff'); line(PJ.spine, PJ.neck, '#ebe7df');
+  line(PJ.neck, PJ.fSh, '#ff9f1c'); line(PJ.fSh, PJ.fEl, '#ff9f1c'); line(PJ.fEl, PJ.fHa, '#ff9f1c');
+  line(PJ.neck, PJ.bSh, '#d9c22e'); line(PJ.bSh, PJ.bEl, '#d9c22e'); line(PJ.bEl, PJ.bHa, '#d9c22e');
+  line(PJ.pelvis, PJ.fHi, '#3f8efc'); line(PJ.fHi, PJ.fKn, '#3f8efc'); line(PJ.fKn, PJ.fFo, '#3f8efc');
+  line(PJ.pelvis, PJ.bHi, '#1fb5a6'); line(PJ.bHi, PJ.bKn, '#1fb5a6'); line(PJ.bKn, PJ.bFo, '#1fb5a6');
+  line(PJ.neck, PJ.head, '#ff5a5f');
+  if (opts.headR) { g.strokeStyle = '#ff5a5f'; g.lineWidth = lw * 0.8; g.beginPath(); g.arc(PJ.head.x, PJ.head.y, opts.headR, 0, Math.PI * 2); g.stroke(); }
+  if (opts.joints !== false) for (const j of (opts.only || JOINTS)) {
+    const p = PJ[j]; if (!p) continue; const sel = S.step === 1 ? S.sel === j : JOINT_PART[j] === S.selPart;
+    g.globalAlpha = sel ? 0.95 : Math.min(1, baseA + 0.1);
+    g.fillStyle = sel ? '#fff' : JOINT_COL[j]; g.strokeStyle = '#000'; g.lineWidth = 1.5 / k;
+    g.beginPath();
+    if (j === 'pelvis') { const r = jr * 1.3; g.moveTo(p.x - r, p.y - r * 0.7); g.lineTo(p.x + r, p.y - r * 0.7); g.lineTo(p.x, p.y + r); g.closePath(); }
+    else g.arc(p.x, p.y, (j.endsWith('Ha') || j.endsWith('Fo') ? jr * 1.15 : jr) * (sel ? 1.3 : 1), 0, Math.PI * 2);
+    g.fill(); g.stroke();
+  }
+  g.restore();
+}
+function drawPaper(g) {
+  const A = area();
+  g.fillStyle = '#2b303a'; g.fillRect(A.x, A.y, A.w, A.h);
+  g.strokeStyle = '#ffffff10'; g.lineWidth = 1 / view.k; g.beginPath();
+  const st = 64;
+  for (let x = Math.ceil(A.x / st) * st; x < A.x + A.w; x += st) { g.moveTo(x, A.y); g.lineTo(x, A.y + A.h); }
+  for (let y = Math.ceil(A.y / st) * st; y < A.y + A.h; y += st) { g.moveTo(A.x, y); g.lineTo(A.x + A.w, y); } g.stroke();
+  // 立ち絵の範囲を薄く示す
+  g.strokeStyle = '#ffffff22'; g.setLineDash([6 / view.k, 6 / view.k]); g.strokeRect(0, 0, S.img.w, S.img.h); g.setLineDash([]);
+}
+let live = null; // 描画中の線 / ブラシ
+let playT = null, playIdx = 0;
+function draw() {
+  const g = ctx; g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height);
+  if (!S.img || !S.rig) return;
+  g.setTransform(dpr * view.k, 0, 0, dpr * view.k, dpr * view.ox, dpr * view.oy);
+  drawPaper(g);
+  if (S.step === 1) {
+    g.drawImage(S.sub === 'parts' ? fg : base, 0, 0);
+    if (S.sub === 'parts') { if (!S.labels) segment(); g.drawImage(overlay, 0, 0); }
+    if (S.sub === 'rig') { if (S.skel) drawSkeleton(g, S.rig.J, { headR: S.rig.headR, alpha: 0.55 }); }
+    else if (S.skel) drawSkeleton(g, S.rig.J, { alpha: 0.5, joints: false });
+  } else if (S.step === 2 && !previewing) {
+    if (S.onion && S.cur > 0) {
+      const prev = S.cur - 1 === 0 ? zeroPose() : S.frames[S.cur - 1].pose;
+      drawPuppet(g, prev, 0.25);
+    }
+    const sol = drawPuppet(g, curPose());
+    if (S.skel) drawSkeleton(g, sol.PJ, { alpha: S.cur === 0 ? 0.2 : 0.35, only: S.cur === 0 ? [] : DRAG_JOINTS_POSE });
+  } else if (S.step === 4) {
+    if (S.genView === 'src' || S.cur === 0) drawPuppet(g, curPose());
+    else if (S.genView === 'mix') { const had = drawFinal(g, S.cur); if (had) drawPuppet(g, curPose(), 0.4); }
+    else drawFinal(g, S.cur);
+  } else {
+    const order = playOrder(); const fi = order[playIdx % order.length] ?? 0;
+    drawFinal(g, fi, !previewing && useGenOut());
+  }
+  if (live?.kind === 'brush' && live.last) { g.strokeStyle = '#fff'; g.lineWidth = 1.5 / view.k; g.beginPath(); g.arc(live.last.x, live.last.y, live.r, 0, Math.PI * 2); g.stroke(); }
+}
+
+// ---------------- 取り消し ----------------
+function snapshot() { return { rig: clone(S.rig), frames: clone(S.frames), labels: S.labels, cur: S.cur }; }
+function pushUndo() { undoStack.push(snapshot()); if (undoStack.length > 40) undoStack.shift(); redoStack.length = 0; updateUndo(); }
+function restore(sn) { S.rig = sn.rig; S.frames = sn.frames; S.labels = sn.labels; S.cur = Math.min(sn.cur, S.frames.length - 1); partsDirty = true; if (S.labels) buildOverlay(); refreshAll(); }
+$('undoBtn').onclick = () => { if (!undoStack.length) return; redoStack.push(snapshot()); restore(undoStack.pop()); updateUndo(); };
+$('redoBtn').onclick = () => { if (!redoStack.length) return; undoStack.push(snapshot()); restore(redoStack.pop()); updateUndo(); };
+function updateUndo() { $('undoBtn').disabled = $('sideUndo').disabled = !undoStack.length; $('redoBtn').disabled = !redoStack.length; }
+
+// ---------------- 入力（Apple Pencil / 指 / マウス） ----------------
+const pointers = new Map(); let pinch = null; let action = null;
+function evPos(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function hitJoint(PJ, sp, names, rr = 26) {
+  let best = null, bd = rr;
+  for (const j of names) { const p = PJ[j]; if (!p) continue; const d = Math.hypot(p.x * view.k + view.ox - sp.x, p.y * view.k + view.oy - sp.y); if (d < bd) { bd = d; best = j; } }
+  return best;
+}
+cv.addEventListener('pointerdown', e => {
+  if (!S.img) return;
+  cv.setPointerCapture(e.pointerId);
+  const sp = evPos(e); pointers.set(e.pointerId, sp);
+  const touches = [...pointers.values()];
+  if (pointers.size === 2 && e.pointerType === 'touch') {
+    if (action?.undoPushed) { /* 誤操作を取り消す */ $('undoBtn').click(); }
+    action = null; live = null;
+    const [a, b] = touches; pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y), m0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, v0: { ...view } };
+    draw(); return;
+  }
+  if (pointers.size > 1) return;
+  const ip = toImg(sp.x, sp.y);
+  if (S.step >= 3 || previewing) { action = { kind: 'none' }; return; }
+  if (S.step === 1 && S.sub === 'parts') {
+    if (e.pointerType === 'touch' && !S.fingerPaint) { action = { kind: 'none' }; return; }
+    pushUndo(); S.labels = S.labels.slice();
+    live = { kind: 'brush', r: +$('brush').value / view.k, last: ip, label: S.partBrush };
+    paintAt(ip, null); action = { kind: 'brush', undoPushed: true }; draw(); return;
+  }
+  const editable = !(S.step === 2 && S.cur === 0);
+  // 関節ドラッグ
+  if (editable) {
+    const PJ = S.step === 1 ? S.rig.J : solve(curPose()).PJ;
+    const j = hitJoint(PJ, sp, S.step === 1 ? JOINTS : DRAG_JOINTS_POSE, e.pointerType === 'touch' ? 34 : 24);
+    if (j) { pushUndo(); S.sel = j; if (S.step === 2) { S.selPart = JOINT_PART[j]; updatePalette(); } action = { kind: 'joint', j, undoPushed: true }; draw(); return; }
+    // パーツ本体をつかむと、そのパーツを関節中心に回す
+    if (S.step === 2) {
+      const k = pickPart(curPose(), ip);
+      if (k) {
+        S.selPart = k; updatePalette(); pushUndo();
+        const an = solve(curPose()).A[BI[k]];
+        action = { kind: 'part', k, an, a0: Math.atan2(ip.y - an.y, ip.x - an.x), ang0: pg(curPose(), k).ang, moved: false, undoPushed: true };
+        draw(); return;
+      }
+    }
+  }
+  action = { kind: 'none' };
+});
+cv.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) { if (live?.kind === 'brush' || (S.step === 1 && S.sub === 'parts')) { const sp = evPos(e); live = { ...(live || { kind: 'brush' }), kind: 'brush', r: +$('brush').value / view.k, last: toImg(sp.x, sp.y) }; if (!action) draw(); } return; }
+  const sp = evPos(e); pointers.set(e.pointerId, sp);
+  if (pinch && pointers.size >= 2) {
+    const [a, b] = [...pointers.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+    const k = Math.max(0.1, Math.min(12, pinch.v0.k * d / pinch.d0));
+    const ix = (pinch.m0.x - pinch.v0.ox) / pinch.v0.k, iy = (pinch.m0.y - pinch.v0.oy) / pinch.v0.k;
+    view = { k, ox: pinch.m0.x - ix * k, oy: pinch.m0.y - iy * k }; draw(); return;
+  }
+  if (!action) return;
+  const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+  if (action.kind === 'brush') { for (const ce of evs) { const p = evPos(ce); paintAt(toImg(p.x, p.y), live.last); } draw(); }
+  else if (action.kind === 'joint') { dragJoint(action.j, toImg(sp.x, sp.y)); draw(); }
+  else if (action.kind === 'part') {
+    const ip = toImg(sp.x, sp.y), a = action.an, d = deg(Math.atan2(ip.y - a.y, ip.x - a.x) - action.a0);
+    if (dist(ip, a) * view.k < 12) return;
+    setP(S.frames[S.cur].pose, action.k, 'ang', normDeg(action.ang0 + d)); action.moved = true; updatePalette(); thumbDirty(S.cur); draw();
+  }
+});
+function endPointer(e) {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.delete(e.pointerId);
+  if (pinch) { if (pointers.size < 2) pinch = null; return; }
+  if (!action) return;
+  const a = action; action = null;
+  if (a.kind === 'brush') {
+    live = null; partsDirty = true; afterChange();
+  } else if (a.kind === 'part') {
+    if (!a.moved) { undoStack.pop(); updateUndo(); } afterChange();
+  } else if (a.kind === 'joint') {
+    if (S.step === 1) { S.labels = null; partsDirty = true; } else thumbDirty(S.cur);
+    afterChange();
+  }
+  draw();
+}
+cv.addEventListener('pointerup', endPointer); cv.addEventListener('pointercancel', endPointer);
+cv.addEventListener('pointerleave', () => { if (live?.kind === 'brush' && !action) { live = null; draw(); } });
+cv.addEventListener('wheel', e => {
+  e.preventDefault(); const sp = evPos(e), f = Math.exp(-e.deltaY * 0.0015), k = Math.max(0.1, Math.min(12, view.k * f));
+  const ix = (sp.x - view.ox) / view.k, iy = (sp.y - view.oy) / view.k; view = { k, ox: sp.x - ix * k, oy: sp.y - iy * k }; draw();
+}, { passive: false });
+function simplify(pts) { const out = [pts[0]]; for (const p of pts) if (dist(p, out[out.length - 1]) > 1.5 / view.k) out.push(p); if (out.length === 1 && pts.length > 1) out.push(pts[pts.length - 1]); return out.map(p => ({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 })); }
+function dragJoint(j, p) {
+  if (S.step === 1) {
+    const J = S.rig.J, d = { x: p.x - J[j].x, y: p.y - J[j].y };
+    const moveWith = { pelvis: ['fHi', 'bHi'], neck: ['fSh', 'bSh'] }[j] || [];
+    J[j] = { x: p.x, y: p.y }; moveWith.forEach(n => { J[n].x += d.x; J[n].y += d.y; });
+    return;
+  }
+  const pose = S.frames[S.cur].pose;
+  if (j === 'pelvis') {
+    const R = pg(pose, 'root'), cur = solve(pose).PJ.pelvis;
+    setP(pose, 'root', 'dx', Math.round(R.dx + p.x - cur.x)); setP(pose, 'root', 'dy', Math.round(R.dy + p.y - cur.y));
+  }
+  else if (j === 'fHa') ik(pose, BI.fU, BI.fF, p); else if (j === 'bHa') ik(pose, BI.bU, BI.bF, p);
+  else if (j === 'fFo') ik(pose, BI.fT, BI.fS, p); else if (j === 'bFo') ik(pose, BI.bT, BI.bS, p);
+  else setDir(pose, BI[JOINT_PART[j]], p);
+  updatePalette();
+}
+function paintAt(p, from) {
+  const { w, h } = S.img, r = live.r, L = S.labels, lab = live.label;
+  const pts = [p]; if (from) { const n = Math.ceil(dist(p, from) / (r * 0.4)); for (let i = 1; i < n; i++) pts.push({ x: from.x + (p.x - from.x) * i / n, y: from.y + (p.y - from.y) * i / n }); }
+  let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
+  for (const q of pts) {
+    for (let y = Math.max(0, Math.floor(q.y - r)); y <= Math.min(h - 1, Math.ceil(q.y + r)); y++)
+      for (let x = Math.max(0, Math.floor(q.x - r)); x <= Math.min(w - 1, Math.ceil(q.x + r)); x++) {
+        if ((x - q.x) ** 2 + (y - q.y) ** 2 > r * r) continue; const i = y * w + x;
+        if (lab === 255) { L[i] = 255; } else if (alpha[i] >= 8) L[i] = lab;
+      }
+    x0 = Math.min(x0, q.x - r); y0 = Math.min(y0, q.y - r); x1 = Math.max(x1, q.x + r); y1 = Math.max(y1, q.y + r);
+  }
+  live.last = p; buildOverlay(x0, y0, x1, y1);
+}
+
+// ---------------- 画面の組み立て ----------------
+function renderTools() {
+  $('tglOnion').classList.toggle('on', S.onion); $('tglOnion').textContent = S.onion ? '前のコマ：表示' : '前のコマ：非表示'; $('menuOnion').textContent = S.onion ? '前のコマを非表示にする' : '前のコマを表示する'; $('menuOnion').hidden = S.step !== 2; $('tglOnion').setAttribute('aria-pressed', !!S.onion);
+  $('tglSkel').classList.toggle('on', S.skel); $('tglSkel').textContent = '骨格'; $('tglSkel').setAttribute('aria-pressed', !!S.skel);
+  $('tglOnion').hidden = S.step !== 2; $('pvBtn').hidden = S.step !== 2;
+  $('fingerPaint').checked = !!S.fingerPaint;
+}
+$('tglOnion').onclick = () => { S.onion = !S.onion; savePrefs(); renderTools(); draw(); };
+$('tglSkel').onclick = () => { S.skel = !S.skel; savePrefs(); renderTools(); draw(); };
+$('fingerPaint').onchange = () => { S.fingerPaint = $('fingerPaint').checked; savePrefs(); };
+function updateHint() {
+  let h = '';
+  if (!S.img) h = '左の「画像を選ぶ」から立ち絵を読み込んでください。';
+  else if (S.step === 1 && S.sub === 'rig') h = '点をつかんで関節に合わせます。';
+  else if (S.step === 1) h = `「${S.partBrush === 255 ? '消しゴム' : BONES[S.partBrush].name}」で塗ります。`;
+  else if (S.step === 2) h = S.cur === 0 ? '1コマ目は立ち姿で固定です。下で2コマ目以降を選んでください。' : '';
+  $('hintText').textContent = h; $('hint').hidden = !h;
+}
+function renderChips() {
+  const c = $('partChips'); c.innerHTML = '';
+  [...BONES.map((b, i) => [i, b.name, b.col]), [255, '消しゴム（パーツから外す）', 'transparent']].forEach(([i, n, col]) => {
+    const b = document.createElement('button'); b.className = 'chip' + (S.partBrush === i ? ' on' : '');
+    b.innerHTML = `<i style="background:${col};border:1px solid #fff6"></i>${n}`; b.onclick = () => { S.partBrush = i; renderChips(); updateHint(); };
+    c.appendChild(b);
+  });
+}
+// パーツ選択：部位ごとの行 × 前／後ろの列
+const PART_GRID = [['全身', '', ['root']], ['頭', '', ['head']], ['胴', '胸', ['chest']], ['', '腰', ['waist']],
+  ['手', '上腕', ['fU', 'bU']], ['', '前腕', ['fF', 'bF']], ['足', '太もも', ['fT', 'bT']], ['', 'すね', ['fS', 'bS']]];
+function renderRail() {
+  const box = $('partRadios'); box.innerHTML = '<span></span><span></span><span class="gh">前</span><span class="gh">後ろ</span>';
+  const add = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = txt || ''; box.appendChild(e); return e; };
+  for (const [grp, sub, keys] of PART_GRID) {
+    if (grp && grp !== '全身') add('div', 'grpLine');
+    add('span', 'grp', grp); add('span', 'sub', sub);
+    for (const k of keys) {
+      const p = PART_LIST.find(q => q.k === k);
+      const l = document.createElement('label'); l.className = 'rad' + (keys.length === 1 ? ' wide' : ''); l.dataset.k = k; l.title = p.name;
+      l.innerHTML = `<input type="radio" name="partRadio" value="${k}" aria-label="${p.name}"><i style="background:${p.col}"></i>${keys.length === 1 ? p.name : ''}`;
+      l.querySelector('input').onchange = () => { S.selPart = k; updatePalette(); draw(); };
+      box.appendChild(l);
+    }
+  }
+}
+// 2回押しで実行するボタン（誤操作防止）
+function twoTap(btn, label, confirmLabel, fn) {
+  btn.onclick = () => {
+    if (!btn.classList.contains('confirm')) { btn.classList.add('confirm'); btn.textContent = confirmLabel; clearTimeout(btn._t); btn._t = setTimeout(() => { btn.classList.remove('confirm'); btn.textContent = label; }, 2500); return; }
+    btn.classList.remove('confirm'); btn.textContent = label; fn();
+  };
+}
+function renderPalette() {
+  renderRail();
+  const ps = $('partSel'); ps.innerHTML = '';
+  for (const p of PART_LIST) {
+    const b = document.createElement('button'); b.className = 'chip'; b.dataset.k = p.k;
+    b.innerHTML = `<i style="background:${p.col}"></i>${p.name}`;
+    b.onclick = () => { S.selPart = p.k; updatePalette(); draw(); };
+    ps.appendChild(b);
+  }
+  const pal = $('palette'); pal.innerHTML = '';
+  for (const gdef of GAUGES) {
+    const row = document.createElement('div'); row.className = 'prow'; const { f, min, max } = gdef;
+    row.innerHTML = `<label for="pr_${f}">${gdef.name}</label><button type="button" aria-label="${gdef.name}を減らす">−</button><input type="range" id="pr_${f}" min="${min}" max="${max}" step="1"><button type="button" aria-label="${gdef.name}を増やす">＋</button><input type="number" id="pn_${f}" min="${min}" max="${max}" step="1">`;
+    pal.appendChild(row);
+    const r = row.querySelector('input[type=range]'), n = row.querySelector('input[type=number]');
+    let pushed = false;
+    const set = v => { if (S.cur === 0) return; const fr = S.frames[S.cur]; if (!pushed) { pushUndo(); pushed = true; } setP(fr.pose, S.selPart, f, +v); r.value = v; n.value = v; thumbDirty(S.cur); draw(); };
+    r.addEventListener('input', () => set(r.value)); r.addEventListener('change', () => { pushed = false; afterChange(); });
+    n.addEventListener('change', () => { set(Math.max(min, Math.min(max, +n.value || 0))); pushed = false; afterChange(); });
+    const [bm, bp] = row.querySelectorAll('button');
+    const nudge = d => { if (S.cur === 0) return; set(Math.max(min, Math.min(max, Math.round(+r.value) + d))); pushed = false; afterChange(); };
+    bm.onclick = () => nudge(-1); bp.onclick = () => nudge(1);
+  }
+}
+function updatePalette() {
+  const q = pg(curPose(), S.selPart);
+  document.querySelectorAll('#partSel .chip').forEach(b => b.classList.toggle('on', b.dataset.k === S.selPart));
+  document.querySelectorAll('#partRadios .rad').forEach(l => { const on = l.dataset.k === S.selPart; l.classList.toggle('on', on); l.querySelector('input').checked = on; });
+  $('selName').textContent = PART_NAME[S.selPart];
+  for (const g of GAUGES) {
+    const v = Math.round(q[g.f] || 0); $('pr_' + g.f).value = v; $('pn_' + g.f).value = v;
+    $('pr_' + g.f).closest('.prow').querySelectorAll('input,button').forEach(el => el.disabled = S.cur === 0);
+  }
+}
+function updatePaletteSel() {}
+
+// フィルムストリップ
+const thumbs = new Map();
+function thumbDirty(i) { thumbs.delete(i); renderStripSoon(); }
+let stripT = null; function renderStripSoon() { clearTimeout(stripT); stripT = setTimeout(renderStrip, 120); }
+function renderStrip() {
+  const box = $('frames'); box.innerHTML = '';
+  S.frames.forEach((f, i) => {
+    const b = document.createElement('button'); b.className = 'fr' + (i === S.cur ? ' on' : ''); b.setAttribute('aria-label', `コマ ${i + 1}`);
+    const c = mkCanvas(152, 172); b.appendChild(c);
+    const lab = document.createElement('div'); lab.className = 'lab'; lab.innerHTML = `<b>${i + 1}${i === 0 ? ' 立' : ''}</b><span>${f.side}${f.hold > 1 ? ' ×' + f.hold : ''}</span>`; b.appendChild(lab);
+    if (curVer(i)) { const t = document.createElement('span'); t.className = 'ai' + (genStale(i) ? ' stale' : ''); t.textContent = genStale(i) ? 'AI!' : 'AI'; b.appendChild(t); }
+    b.onclick = () => { S.cur = i; S.sel = null; if (S.step === 3) { playIdx = playOrder().indexOf(i); } refreshAll(); };
+    box.appendChild(b);
+    drawThumb(c, i);
+  });
+  $('prevFr').disabled = S.cur === 0; $('nextFr').disabled = S.cur >= S.frames.length - 1;
+  box.children[S.cur]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  $('moveL').disabled = S.cur <= 1; $('moveR').disabled = S.cur === 0 || S.cur >= S.frames.length - 1;
+  $('addFrame').disabled = S.frames.length >= MAX_FRAMES;
+}
+function drawThumb(c, i) {
+  if (!S.img) return; const g = c.getContext('2d'), A = area(), k = Math.min(c.width / A.w, c.height / A.h);
+  g.setTransform(k, 0, 0, k, (c.width - A.w * k) / 2 - A.x * k, (c.height - A.h * k) / 2 - A.y * k);
+  drawFinal(g, i, S.step === 4 || (S.step === 3 && useGenOut()));
+}
+$('addFrame').onclick = () => {
+  if (S.frames.length >= MAX_FRAMES) return toast(`コマは最大 ${MAX_FRAMES} 枚です`);
+  pushUndo(); const src = S.frames[S.cur]; const nf = newFrame(clone(S.cur === 0 ? zeroPose() : src.pose)); nf.side = src.side;
+  S.frames.splice(S.cur + 1, 0, nf); S.cur++; if (S.step !== 2) setStep(2); refreshAll(); afterChange();
+};
+function deleteFrame() { if (S.cur === 0) return; pushUndo(); S.frames.splice(S.cur, 1); S.cur = Math.min(S.cur, S.frames.length - 1); thumbs.clear(); refreshAll(); afterChange(); toast('コマを削除しました（「戻す」で取り消せます）'); }
+$('railDelFrame').onclick = deleteFrame;
+$('sideUndo').onclick = () => $('undoBtn').click();
+function goFrame(i) { if (i < 0 || i >= S.frames.length) return; S.cur = i; S.sel = null; if (S.step === 3) playIdx = playOrder().indexOf(i); refreshAll(); }
+$('prevFr').onclick = () => goFrame(S.cur - 1); $('nextFr').onclick = () => goFrame(S.cur + 1);
+function moveFrame(d) { const i = S.cur, j = i + d; if (i === 0 || j < 1 || j >= S.frames.length) return; pushUndo(); [S.frames[i], S.frames[j]] = [S.frames[j], S.frames[i]]; S.cur = j; refreshAll(); afterChange(); }
+$('moveL').onclick = () => moveFrame(-1); $('moveR').onclick = () => moveFrame(1);
+
+// 右パネル（コマ）
+function renderFrameSide() {
+  const f = S.frames[S.cur];
+  $('frameTitle').textContent = S.cur === 0 ? 'コマ 1（立ち姿）' : `コマ ${S.cur + 1} / ${S.frames.length}`;
+  $('sideF').classList.toggle('on', f.side === 'F'); $('sideB').classList.toggle('on', f.side === 'B');
+  $('holdVal').textContent = f.hold;
+  ['copyPrev', 'resetPart', 'sideF', 'sideB', 'railResetFrame', 'railDelFrame'].forEach(id => $(id).disabled = S.cur === 0);
+  renderInbetween();
+  updatePalette();
+}
+function frameEdit(fn) { if (S.cur === 0) return; pushUndo(); fn(S.frames[S.cur]); thumbDirty(S.cur); refreshAll(); afterChange(); }
+$('sideF').onclick = () => frameEdit(f => f.side = 'F');
+$('sideB').onclick = () => frameEdit(f => f.side = 'B');
+$('holdMinus').onclick = () => { pushUndo(); const f = S.frames[S.cur]; f.hold = Math.max(1, f.hold - 1); refreshAll(); afterChange(); };
+$('holdPlus').onclick = () => { pushUndo(); const f = S.frames[S.cur]; f.hold = Math.min(12, f.hold + 1); refreshAll(); afterChange(); };
+$('copyPrev').onclick = () => frameEdit(f => { const p = S.frames[S.cur - 1]; f.pose = clone(S.cur - 1 === 0 ? zeroPose() : p.pose); });
+
+$('resetPart').onclick = () => frameEdit(f => { delete f.pose[S.selPart]; });
+$('railResetFrame').onclick = () => frameEdit(f => { f.pose = zeroPose(); });
+// 中割り：今のコマと次のコマの間を計算して挿入
+const EASE = { linear: t => t, smooth: t => t * t * (3 - 2 * t), in: t => t * t, out: t => 1 - (1 - t) * (1 - t) };
+// ---------------- 動きのプリセット ----------------
+// 角度は画面上の向き（0=前、90=下、-90=上、180=後ろ）。L=前の手足（相手側）、R=後ろの手足。位置は身長に対する割合
+const G = { waist: -90, chest: -88, head: -86, LU: 60, LF: -40, RU: 100, RF: -70, LT: 80, LS: 95, RT: 102, RS: 98 };
+const PRESETS = {
+  walk: { name: '歩く', keys: [
+    { d: { ...G, LT: 72, LS: 88, RT: 108, RS: 100 } },
+    { dy: -0.012, d: { ...G, LT: 90, LS: 94, RT: 88, RS: 125 } },
+    { d: { ...G, LT: 108, LS: 100, RT: 72, RS: 88 } },
+    { dy: -0.012, d: { ...G, LT: 88, LS: 125, RT: 90, RS: 94 } }] },
+  crouch: { name: 'しゃがむ', keys: [
+    { d: G },
+    { dy: 0.1, d: { ...G, waist: -84 }, plant: [0.05, -0.05] },
+    { dy: 0.2, hold: 2, d: { ...G, waist: -80, chest: -84, LU: 70, RU: 105 }, plant: [0.06, -0.06] }] },
+  jump: { name: 'ジャンプ', keys: [
+    { dy: 0.1, d: { ...G, waist: -82 }, plant: [0.04, -0.04] },
+    { dy: -0.12, d: { ...G, LT: 95, LS: 92, RT: 100, RS: 95 } },
+    { dy: -0.32, hold: 2, d: { ...G, LT: 30, LS: 110, RT: 55, RS: 125 } },
+    { dy: -0.14, d: { ...G, LT: 75, LS: 100, RT: 95, RS: 105 } },
+    { dy: 0.1, d: { ...G, waist: -82 }, plant: [0.04, -0.04] }] },
+  jab: { name: 'ジャブ（前の手のパンチ）', keys: [
+    { d: G },
+    { d: { ...G, chest: -84, LU: 25, LF: -15 } },
+    { hold: 2, dx: 0.01, d: { ...G, chest: -80, head: -84, LU: -4, LF: -4 } },
+    { d: { ...G, chest: -84, LU: 30, LF: -20 } },
+    { d: G }] },
+  straight: { name: 'ストレート（後ろの手のパンチ）', keys: [
+    { d: G },
+    { d: { ...G, chest: -92, RU: 110, RF: -80 } },
+    { dx: 0.04, d: { ...G, waist: -86, chest: -80, LU: 95, LF: -95, RU: 35, RF: -10 } },
+    { hold: 2, dx: 0.07, d: { ...G, waist: -84, chest: -74, head: -82, LU: 100, LF: -100, RU: -3, RF: -3, RT: 110, RS: 102 } },
+    { dx: 0.02, d: { ...G, chest: -82, RU: 50, RF: -30 } },
+    { d: G }] },
+  frontKick: { name: '前足キック', keys: [
+    { d: G },
+    { d: { ...G, waist: -96, chest: -98, LT: 10, LS: 95, RT: 95, RS: 95 } },
+    { hold: 2, d: { ...G, waist: -104, chest: -106, head: -95, LT: -12, LS: -10, RT: 98, RS: 95 } },
+    { d: { ...G, waist: -96, chest: -98, LT: 15, LS: 100, RT: 95, RS: 95 } },
+    { d: G }] },
+  backKick: { name: '後ろ足キック', keys: [
+    { d: G },
+    { dx: 0.02, d: { ...G, waist: -94, chest: -96, RT: 20, RS: 110, LT: 92, LS: 95 } },
+    { hold: 2, dx: 0.05, d: { ...G, waist: -106, chest: -110, head: -96, RT: -15, RS: -12, LT: 95, LS: 95 } },
+    { dx: 0.03, d: { ...G, waist: -96, chest: -98, RT: 25, RS: 110, LT: 92, LS: 95 } },
+    { d: G }] },
+  guard: { name: 'ガード', keys: [
+    { d: G },
+    { dy: 0.05, hold: 3, d: { ...G, waist: -92, chest: -98, head: -102, LU: 45, LF: -95, RU: 65, RF: -100 }, plant: [0.05, -0.05] },
+    { d: G }] },
+  fall: { name: '倒れる', keys: [
+    { d: G },
+    { dx: -0.04, ang: -8, d: { waist: -100, chest: -115, head: -128, LU: -150, LF: -165, RU: 150, RF: 175, LT: 80, LS: 95, RT: 100, RS: 98 } },
+    { dx: -0.14, dy: 0.12, ang: -40, d: { waist: -140, chest: -150, head: -155, LU: -170, LF: 180, RU: 170, RF: 175, LT: 40, LS: 70, RT: 55, RS: 80 } },
+    { dx: -0.3, dy: 0.36, ang: -85, hold: 3, d: { waist: 178, chest: 180, head: -175, LU: 160, LF: 175, RU: 170, RF: 178, LT: 5, LS: 0, RT: 10, RS: 0 } }] },
+};
+function bodyH() { const J = S.rig.J; return Math.max(J.fFo.y, J.bFo.y) - (J.head.y - S.rig.headR); }
+// 前（相手側）の手足が、骨格の「前／後ろ」どちらにあたるかを立ち姿から判断
+function limbMap(dirSign) {
+  const J = S.rig.J, armF = (J.fHa.x - J.bHa.x) * dirSign >= 0, legF = (J.fFo.x - J.bFo.x) * dirSign >= 0;
+  return { LU: armF ? 'fU' : 'bU', LF: armF ? 'fF' : 'bF', RU: armF ? 'bU' : 'fU', RF: armF ? 'bF' : 'fF',
+    LT: legF ? 'fT' : 'bT', LS: legF ? 'fS' : 'bS', RT: legF ? 'bT' : 'fT', RS: legF ? 'bS' : 'fS' };
+}
+// 2つある肘・膝の位置のうち、prefer 方向にあるほうを選ぶIK
+function ikPrefer(pose, u, f, t, prefer) {
+  const sol = solve(pose), bu = BONES[u], bf = BONES[f], a = sol.A[u];
+  const L1 = dist(a, sol.PJ[bu.b]), L2 = dist(sol.PJ[bu.b], sol.PJ[bf.b]);
+  const dd = Math.max(Math.abs(L1 - L2) + 0.5, Math.min(L1 + L2 - 0.5, dist(a, t)));
+  const al = Math.acos(Math.max(-1, Math.min(1, (L1 * L1 + dd * dd - L2 * L2) / (2 * L1 * dd)))), base = Math.atan2(t.y - a.y, t.x - a.x);
+  const c = [1, -1].map(sg => ({ x: a.x + L1 * Math.cos(base + sg * al), y: a.y + L1 * Math.sin(base + sg * al) }));
+  const e = (c[0].x - c[1].x) * prefer.x + (c[0].y - c[1].y) * prefer.y >= 0 ? c[0] : c[1];
+  setDir(pose, u, e); setDir(pose, f, t);
+}
+function poseFromSpec(spec, dirSign) {
+  const H = bodyH(), m = limbMap(dirSign), A = a => dirSign > 0 ? a : 180 - a;
+  const pose = { root: { ...PZ, dx: Math.round((spec.dx || 0) * H * dirSign), dy: Math.round((spec.dy || 0) * H), ang: (spec.ang || 0) * dirSign } };
+  const dirs = {}; for (const [k, v] of Object.entries(spec.d || {})) dirs[m[k] || k] = v;
+  BONES.forEach((b, i) => {
+    if (dirs[b.k] == null) return;
+    const a = solve(pose).A[i], r = rad(A(dirs[b.k])); setDir(pose, i, { x: a.x + Math.cos(r) * 50, y: a.y + Math.sin(r) * 50 });
+  });
+  if (spec.plant) { // 足を地面に残す
+    const J = S.rig.J;
+    [['L', spec.plant[0]], ['R', spec.plant[1]]].forEach(([s, off]) => {
+      const T = m[s + 'T'], Sh = m[s + 'S'], foot = BONES[BI[Sh]].b;
+      ikPrefer(pose, BI[T], BI[Sh], { x: J[foot].x + off * H * dirSign, y: J[foot].y }, { x: dirSign, y: 0 });
+    });
+  }
+  return pose;
+}
+function loadPreset() {
+  const P = PRESETS[$('psName').value]; if (!P) return;
+  const dirSign = $('psDir').value === 'left' ? -1 : 1, withIb = $('psIb').checked;
+  const keys = P.keys.map(k => { const f = newFrame(poseFromSpec(k, dirSign)); f.hold = k.hold || 1; return f; });
+  const out = [];
+  keys.forEach((f, n) => {
+    out.push(f);
+    if (withIb && n < keys.length - 1) { const g = newFrame(lerpPose(f.pose, keys[n + 1].pose, 0.5)); out.push(g); }
+  });
+  const replace = $('psMode').value === 'replace';
+  const total = (replace ? 1 : S.frames.length) + out.length;
+  if (total > MAX_FRAMES) return toast(`コマが ${MAX_FRAMES} 枚を超えます。「中割りも入れる」を外すか、コマを減らしてください`);
+  pushUndo();
+  if (replace) S.frames = [S.frames[0], ...out]; else S.frames.push(...out);
+  thumbs.clear(); S.cur = replace ? 1 : S.frames.length - out.length; refreshAll(); afterChange();
+  toast(`「${P.name}」を ${out.length} コマ読み込みました（「戻す」で取り消せます）`);
+}
+for (const [k, p] of Object.entries(PRESETS)) $('psName').add(new Option(p.name, k));
+$('psBtn').onclick = loadPreset;
+
+function renderInbetween() {
+  const fix = S.ibMode === 'fix', room = S.frames.length - 1 - S.cur;
+  $('ibModeAdd').classList.toggle('on', !fix); $('ibModeFix').classList.toggle('on', fix);
+  $('ibAddRow').hidden = fix; $('ibFixRow').hidden = !fix;
+  if (fix) {
+    const sel = $('ibTo'), prev = +sel.value || 2; sel.innerHTML = '';
+    for (let k = 2; k <= room; k++) sel.add(new Option(String(k), String(k)));
+    if (room >= 2) sel.value = String(Math.min(Math.max(2, prev), room));
+    const to = +sel.value;
+    $('ibFixNote').textContent = room < 2 ? 'うしろに2コマ以上あるコマを選んでください。'
+      : `コマ ${S.cur + 1} とコマ ${S.cur + 1 + to} のポーズをもとに、間のコマ ${S.cur + 2}〜${S.cur + to} を作り直します。`;
+    $('ibBtn').textContent = '間のコマを作り直す'; $('ibBtn').disabled = room < 2;
+  } else { $('ibBtn').textContent = '中割りを自動生成'; $('ibBtn').disabled = room < 1; }
+}
+$('ibModeAdd').onclick = () => { S.ibMode = 'add'; renderInbetween(); };
+$('ibModeFix').onclick = () => { S.ibMode = 'fix'; renderInbetween(); };
+$('ibTo').onchange = renderInbetween;
+$('ibBtn').onclick = () => {
+  const e = EASE[$('ibEase').value] || EASE.linear;
+  const A = S.cur === 0 ? zeroPose() : S.frames[S.cur].pose;
+  if (S.ibMode === 'fix') {
+    const to = +$('ibTo').value; if (!to || S.cur + to >= S.frames.length) return;
+    pushUndo(); const B = S.frames[S.cur + to].pose;
+    for (let k = 1; k < to; k++) { S.frames[S.cur + k].pose = lerpPose(A, B, e(k / to)); thumbs.delete(S.cur + k); }
+    refreshAll(); afterChange(); toast(`コマ ${S.cur + 2}〜${S.cur + to} を作り直しました`); return;
+  }
+  const n = +$('ibN').value;
+  if (S.cur >= S.frames.length - 1) return toast('最後のコマです。間に入れたい2コマの前のほうを選んでください');
+  if (S.frames.length + n > MAX_FRAMES) return toast(`コマは最大 ${MAX_FRAMES} 枚です`);
+  pushUndo();
+  const B = S.frames[S.cur + 1].pose, side = S.frames[S.cur].side;
+  const add = []; for (let k = 1; k <= n; k++) { const f = newFrame(lerpPose(A, B, e(k / (n + 1)))); f.side = side; add.push(f); }
+  S.frames.splice(S.cur + 1, 0, ...add); thumbs.clear(); S.cur = S.cur + 1; refreshAll(); afterChange();
+  toast(`${n} 枚の中割りを作りました`);
+};
+
+// ---------------- 画像生成（Gemini） ----------------
+// 生成画像は S.gen[id] = dataURL に置き、コマ側は f.ai = { v: [{ id, box, sig }], cur } だけを持つ（取り消し履歴を軽く保つ）
+S.gen = {}; S.genView = 'gen';
+const MOCK = /[?&]mock\b/.test(location.search);
+const ASPECTS = [['1:1', 1], ['2:3', 2 / 3], ['3:2', 1.5], ['3:4', .75], ['4:3', 4 / 3], ['4:5', .8], ['5:4', 1.25], ['9:16', 9 / 16], ['16:9', 16 / 9]];
+const genImgs = new Map(); // id -> { img, keyed }
+let genAbort = null, genBusyIdx = new Set();
+const poseSig = f => JSON.stringify([f.pose, f.side]);
+const curVer = i => { const a = S.frames[i]?.ai; return a && a.cur >= 0 ? a.v[a.cur] : null; };
+function genStale(i) { const v = curVer(i); return !!v && v.sig !== poseSig(S.frames[i]); }
+function newGenId() { return 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function genSettings() { return { key: $('genKey').value.trim(), model: $('genModel').value, note: $('genNote').value.trim(), green: $('genGreen').checked }; }
+function loadGenSettings() {
+  try { const o = JSON.parse(localStorage.getItem('sa_gen') || '{}'); $('genKey').value = o.key || ''; if (o.model) $('genModel').value = o.model; $('genNote').value = o.note || ''; if (o.green === false) $('genGreen').checked = false; } catch {}
+}
+function saveGenSettings() { try { localStorage.setItem('sa_gen', JSON.stringify(genSettings())); } catch {} }
+['genKey', 'genModel', 'genNote'].forEach(id => $(id).addEventListener('change', saveGenSettings));
+$('genGreen').onchange = () => { saveGenSettings(); genImgs.forEach(o => o.keyed = null); thumbs.clear(); renderStripSoon(); draw(); };
+
+// 送る範囲：作業キャンバスを対応アスペクト比まで広げた箱
+function genBox() {
+  const A = area(), r = A.w / A.h; let best = ASPECTS[0];
+  for (const a of ASPECTS) if (Math.abs(Math.log(a[1] / r)) < Math.abs(Math.log(best[1] / r))) best = a;
+  let w = A.w, h = A.h; if (best[1] > r) w = h * best[1]; else h = w / best[1];
+  return { x: A.x - (w - A.w) / 2, y: A.y - (h - A.h) / 2, w, h, aspect: best[0] };
+}
+function renderPuppetBox(i, box, green, maxSide = 1024) {
+  const s = Math.min(1, maxSide / Math.max(box.w, box.h)), c = mkCanvas(Math.round(box.w * s), Math.round(box.h * s)), g = c.getContext('2d');
+  if (green) { g.fillStyle = '#00ff00'; g.fillRect(0, 0, c.width, c.height); }
+  g.setTransform(s, 0, 0, s, -box.x * s, -box.y * s); drawPuppet(g, i === 0 ? zeroPose() : S.frames[i].pose); return c;
+}
+function standRef(green) {
+  const s = Math.min(1, 1024 / Math.max(S.img.w, S.img.h)), c = mkCanvas(Math.round(S.img.w * s), Math.round(S.img.h * s)), g = c.getContext('2d');
+  if (green) { g.fillStyle = '#00ff00'; g.fillRect(0, 0, c.width, c.height); g.drawImage(fg, 0, 0, c.width, c.height); } else g.drawImage(base, 0, 0, c.width, c.height);
+  return c;
+}
+const partOf = c => { const d = (typeof c === 'string' ? c : c.toDataURL('image/png')); const m = /^data:([^;]+);base64,(.*)$/.exec(d); return { mime: m[1], data: m[2] }; };
+function chromaKey(src) {
+  const c = mkCanvas(src.naturalWidth || src.width, src.naturalHeight || src.height), g = c.getContext('2d'); g.drawImage(src, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height), p = d.data;
+  for (let k = 0; k < p.length; k += 4) {
+    const r = p[k], gg = p[k + 1], b = p[k + 2], mx = Math.max(r, b), diff = (gg - mx) / 255;
+    if (diff > 0.3) { p[k + 3] = 0; continue; }
+    if (diff > 0.08) { p[k + 3] = Math.round(p[k + 3] * (1 - (diff - 0.08) / 0.22)); p[k + 1] = mx; }
+    else if (gg > mx) p[k + 1] = Math.round((gg + mx) / 2);
+  }
+  g.putImageData(d, 0, 0); return c;
+}
+// 生成画像を描ける状態にする（読み込み中は null を返し、読み込み後に再描画）
+function genDrawable(id) {
+  if (!S.gen[id]) return null;
+  let o = genImgs.get(id);
+  if (!o) { o = { img: new Image(), ready: false, keyed: null }; genImgs.set(id, o); o.img.onload = () => { o.ready = true; thumbs.clear(); renderStripSoon(); draw(); }; o.img.src = S.gen[id]; }
+  if (!o.ready) return null;
+  if ($('genGreen').checked) { if (!o.keyed) o.keyed = chromaKey(o.img); return o.keyed; }
+  return o.img;
+}
+// 1コマを最終的な絵で描く（生成画像があればそれ、無ければ切り絵）
+function drawFinal(g, i, useGen = true) {
+  const v = useGen && i > 0 ? curVer(i) : null, im = v && genDrawable(v.id);
+  if (im) { g.drawImage(im, v.box.x, v.box.y, v.box.w, v.box.h); return true; }
+  drawPuppet(g, i === 0 ? zeroPose() : S.frames[i].pose); return false;
+}
+const useGenOut = () => $('exUseGen').checked;
+
+async function callGemini(parts, signal) {
+  const st = genSettings();
+  if (MOCK) return mockGemini(parts, signal);
+  if (!st.key) throw new Error('「AI の設定」に Gemini API キーを入力してください');
+  const body = { contents: [{ role: 'user', parts: parts.map(p => typeof p === 'string' ? { text: p } : { inline_data: { mime_type: p.mime, data: p.data } }) }],
+    generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: parts.aspect } } };
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let res;
+    try {
+      res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(st.model)}:generateContent`, {
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': st.key }, body: JSON.stringify(body) });
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      throw new Error('Gemini に接続できませんでした。この画面から外部への通信が許可されていない可能性があります。共有フォルダの index.html を Safari で直接開くと使えます。');
+    }
+    const json = await res.json().catch(() => ({}));
+    if (res.ok) {
+      const cand = json.candidates?.[0], out = cand?.content?.parts || [], img = out.find(p => p.inlineData || p.inline_data);
+      if (img) { const d = img.inlineData || img.inline_data; return `data:${d.mimeType || d.mime_type || 'image/png'};base64,${d.data}`; }
+      const txt = out.map(p => p.text).filter(Boolean).join(' ');
+      lastErr = new Error('画像が返りませんでした' + (cand?.finishReason ? `（${cand.finishReason}）` : '') + (txt ? '：' + txt.slice(0, 120) : ''));
+    } else {
+      lastErr = new Error(`API エラー ${res.status}：${json.error?.message || res.statusText}`);
+      if (![429, 500, 502, 503, 504].includes(res.status)) throw lastErr;
+    }
+    await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+  }
+  throw lastErr;
+}
+// デモ（?mock=1）：API を使わず、送った原画に色をのせて返す
+async function mockGemini(parts, signal) {
+  await new Promise(r => setTimeout(r, 400));
+  if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+  const p = parts.find(x => typeof x !== 'string'), im = await loadImage(`data:${p.mime};base64,${p.data}`);
+  const c = mkCanvas(im.width, im.height), g = c.getContext('2d'); g.drawImage(im, 0, 0);
+  g.globalCompositeOperation = 'source-atop'; g.fillStyle = '#4060ff30'; g.fillRect(0, 0, c.width, c.height);
+  g.globalCompositeOperation = 'source-over'; g.fillStyle = '#000a'; g.fillRect(0, 0, 150, 40); g.fillStyle = '#fff'; g.font = 'bold 26px sans-serif'; g.fillText('MOCK', 12, 30);
+  return c.toDataURL('image/png');
+}
+function rulesText(i, green) {
+  const f = S.frames[i], note = genSettings().note;
+  return [
+    `Visible side of the body: ${f.side === 'B' ? 'mostly the BACK side (we see the character from behind)' : 'the FRONT / chest side'}.`,
+    note ? `Character notes: ${note}` : '',
+    'Keep the exact character design, costume, colors, proportions and drawing style of the character reference.',
+    green ? 'Background: one flat, uniform pure chroma-key green (#00FF00). No floor, no shadow, no gradient.' : 'Background: plain and simple.',
+    'Output ONE single image only. No text, no frame borders, no extra characters.',
+  ].filter(Boolean).join('\n');
+}
+async function buildGenParts(i, box, green) {
+  const parts = [], prev = $('genChain').checked ? (() => { for (let j = i - 1; j >= 1; j--) { const v = curVer(j); if (v) return { v, j }; } return null; })() : null;
+  let t = `You are finishing FRAME ${i + 1} of ${S.frames.length} of a 2D fighting game sprite animation.\n` +
+    `IMAGE 1 is a rough CUT-OUT PUPPET render of this frame: the character's parts were cut from the reference and rotated at the joints, so there are gaps or overlaps at joints, missing hidden areas and stretched shapes. Its POSE, limb angles, body position inside the canvas, size and ground line are EXACTLY what we want.\n` +
+    `IMAGE 2 is the original character reference (standing pose).\n`;
+  parts.push(partOf(renderPuppetBox(i, box, green)), partOf(standRef(green)));
+  if (prev) { parts.push(partOf(S.gen[prev.v.id])); t += `IMAGE 3 is the already finished frame ${prev.j + 1} of the same animation. Match its line quality, colors and rendering.\n`; }
+  t += `\nTASK: Redraw IMAGE 1 as a clean, finished illustration of the character. Keep exactly the same pose, the same position and scale in the canvas, and the same framing as IMAGE 1. Repair the joints, fill in parts that were hidden in the reference, and make clothes, hair, wings and accessories fall naturally for this pose.\n\nRULES:\n${rulesText(i, green)}`;
+  parts.unshift(t); parts.aspect = box.aspect; return parts;
+}
+async function buildFixParts(i, v, fix, green) {
+  const t = `EDIT this finished sprite frame. IMAGE 1 is the current frame ${i + 1}. IMAGE 2 is the character reference; keep the character identical to it.\n` +
+    `Apply ONLY this change, and keep everything else (pose, size, position in the canvas, framing, colors, style, background) unchanged:\n${fix}\n\nRULES:\n${rulesText(i, green)}`;
+  const parts = [t, partOf(S.gen[v.id]), partOf(standRef(green))]; parts.aspect = v.box.aspect || genBox().aspect; return parts;
+}
+async function runGen(i, mode, signal) {
+  if (i === 0) return false;
+  const f = S.frames[i], green = genSettings().green, fix = $('genFix').value.trim();
+  const v0 = curVer(i);
+  if (mode === 'fix' && (!v0 || !fix)) { toast(v0 ? '直したいところを書いてください' : '先にこのコマを生成してください'); return false; }
+  const box = mode === 'fix' ? v0.box : genBox(), sig = poseSig(f);
+  genBusyIdx.add(i); renderGenSide(); draw();
+  try {
+    const parts = mode === 'fix' ? await buildFixParts(i, v0, fix, green) : await buildGenParts(i, box, green);
+    const url = await callGemini(parts, signal);
+    const id = newGenId(); S.gen[id] = url;
+    const fr = S.frames.indexOf(f) >= 0 ? f : null; if (!fr) return false;   // 生成中にコマが消された
+    pushUndo();
+    fr.ai = fr.ai || { v: [], cur: -1 };
+    fr.ai.v = fr.ai.v.slice(0, fr.ai.cur + 1); fr.ai.v.push({ id, box: { x: box.x, y: box.y, w: box.w, h: box.h, aspect: box.aspect }, sig: mode === 'fix' ? v0.sig : sig }); fr.ai.cur = fr.ai.v.length - 1;
+    if (mode === 'fix') $('genFix').value = '';
+    thumbDirty(S.frames.indexOf(fr)); afterChange();
+    return true;
+  } catch (e) {
+    if (e.name !== 'AbortError') { toast(`コマ ${i + 1}：${e.message}`, 6000); $('genGlobal').textContent = e.message; }
+    return false;
+  } finally { genBusyIdx.delete(i); renderGenSide(); draw(); }
+}
+async function runGenBatch(list) {
+  if (!list.length) return toast('生成するコマがありません');
+  if (!MOCK && !genSettings().key) return toast('「AI の設定」に Gemini API キーを入力してください');
+  saveGenSettings(); genAbort = new AbortController(); $('genStop').disabled = false;
+  let ok = 0;
+  for (const f of list) {
+    if (genAbort.signal.aborted) break;
+    const i = S.frames.indexOf(f); if (i < 1) continue;
+    $('genGlobal').textContent = `コマ ${i + 1} を生成中…（${ok + 1}/${list.length}）`;
+    if (await runGen(i, 'gen', genAbort.signal)) ok++;
+  }
+  $('genGlobal').textContent = genAbort.signal.aborted ? `停止しました（${ok} 枚生成）` : `${ok} / ${list.length} 枚を生成しました`;
+  genAbort = null; $('genStop').disabled = true;
+}
+function renderGenSide() {
+  if (S.step !== 4) return;
+  const i = S.cur, f = S.frames[i], a = f.ai, v = curVer(i), busy = genBusyIdx.has(i);
+  $('genTitle').textContent = `コマ ${i + 1} / ${S.frames.length}`;
+  $('genVer').textContent = a && a.v.length ? `${a.cur + 1} / ${a.v.length}` : '—';
+  $('genVerPrev').disabled = !a || a.cur <= 0; $('genVerNext').disabled = !a || a.cur >= a.v.length - 1;
+  $('genState').textContent = i === 0 ? '1コマ目は立ち絵そのものを使います。' : busy ? '生成中です…' : !v ? 'まだ生成していません（今は切り絵の原画です）。' :
+    genStale(i) ? '生成した後に棒人間が変わりました。作り直すと今のポーズになります。' : '生成済みです。';
+  $('genOne').textContent = v ? 'このコマを作り直す' : 'このコマを生成';
+  ['genOne', 'genFixBtn', 'genToPose'].forEach(id => $(id).disabled = i === 0 || busy);
+  $('genFixBtn').disabled ||= !v; $('genDrop').disabled = !v || busy;
+  $('gvGen').classList.toggle('on', S.genView === 'gen'); $('gvSrc').classList.toggle('on', S.genView === 'src'); $('gvMix').classList.toggle('on', S.genView === 'mix');
+  $('genBusy').hidden = !busy;
+}
+$('genOne').onclick = async () => { if (!MOCK && !genSettings().key) return toast('「AI の設定」に Gemini API キーを入力してください'); saveGenSettings(); await runGen(S.cur, 'gen'); };
+$('genFixBtn').onclick = async () => { saveGenSettings(); await runGen(S.cur, 'fix'); };
+$('genToPose').onclick = () => setStep(2);
+$('genAll').onclick = () => runGenBatch(S.frames.filter((f, i) => i > 0 && (!curVer(i) || genStale(i))));
+$('genRedoAll').onclick = () => runGenBatch(S.frames.slice(1));
+$('genStop').onclick = () => genAbort?.abort();
+$('genVerPrev').onclick = () => { const a = S.frames[S.cur].ai; if (a && a.cur > 0) { a.cur--; thumbDirty(S.cur); afterChange(); renderGenSide(); draw(); } };
+$('genVerNext').onclick = () => { const a = S.frames[S.cur].ai; if (a && a.cur < a.v.length - 1) { a.cur++; thumbDirty(S.cur); afterChange(); renderGenSide(); draw(); } };
+$('genDrop').onclick = () => { const a = S.frames[S.cur].ai; if (!a || a.cur < 0) return; pushUndo(); a.v.splice(a.cur, 1); a.cur = Math.min(a.cur, a.v.length - 1); thumbDirty(S.cur); afterChange(); renderGenSide(); draw(); toast('この版を消しました（「戻す」で取り消せます）'); };
+[['gvGen', 'gen'], ['gvSrc', 'src'], ['gvMix', 'mix']].forEach(([id, m]) => $(id).onclick = () => { S.genView = m; renderGenSide(); draw(); });
+$('exUseGen').onchange = () => { thumbs.clear(); renderStripSoon(); draw(); };
+// 保存時に、どのコマからも参照されない生成画像を捨てる
+function genInUse() { const ids = new Set(); for (const f of S.frames) for (const v of f.ai?.v || []) ids.add(v.id); for (const sn of [...undoStack, ...redoStack]) for (const f of sn.frames) for (const v of f.ai?.v || []) ids.add(v.id); return ids; }
+
+// ステップ切り替え
+function setStep(n) {
+  if (n > 1 && !S.img) return toast('先に立ち絵を読み込んでください');
+  stopPlay(); S.step = n; S.sel = null;
+  if ((n === 2 || n === 4) && S.cur === 0 && S.frames.length > 1) S.cur = 1;
+  refreshAll();
+}
+[1, 2, 3, 4].forEach(n => $('tab' + n).onclick = () => setStep(n));
+$('toStep2').onclick = () => { if (S.frames.length === 1) { S.frames.push(newFrame()); } setStep(2); };
+$('sub_rig').onclick = () => { S.sub = 'rig'; refreshAll(); };
+$('sub_parts').onclick = () => { S.sub = 'parts'; if (!S.labels) segment(); refreshAll(); };
+$('autoRig').onclick = () => { pushUndo(); autoRig(); S.labels = null; partsDirty = true; afterChange(); draw(); };
+$('swapFB').onclick = () => {
+  pushUndo(); const J = S.rig.J; for (const [a, b] of [['fSh', 'bSh'], ['fEl', 'bEl'], ['fHa', 'bHa'], ['fHi', 'bHi'], ['fKn', 'bKn'], ['fFo', 'bFo']]) [J[a], J[b]] = [J[b], J[a]];
+  S.labels = null; partsDirty = true; afterChange(); draw(); toast('前と後ろを入れ替えました');
+};
+$('resegBtn').onclick = () => {
+  const b = $('resegBtn');
+  if (!b.classList.contains('confirm')) { b.classList.add('confirm'); b.textContent = '塗り直しが消えます。もう一度押す'; setTimeout(() => { b.classList.remove('confirm'); b.textContent = '自動で分け直す'; }, 3000); return; }
+  b.classList.remove('confirm'); b.textContent = '自動で分け直す'; pushUndo(); segment(); afterChange(); draw();
+};
+$('brush').oninput = () => $('brushVal').textContent = $('brush').value;
+$('tol').oninput = () => { $('tolVal').textContent = $('tol').value; };
+$('tol').onchange = () => { S.tol = +$('tol').value; computeForeground(); S.labels = null; partsDirty = true; thumbs.clear(); afterChange(); draw(); };
+$('fps').oninput = () => { S.fps = +$('fps').value; $('fpsVal').textContent = S.fps + ' fps'; if (playT) { stopPlay(); startPlay(); } };
+$('fitBtn').onclick = fit; $('zoomIn').onclick = () => zoomBy(1.25); $('zoomOut').onclick = () => zoomBy(0.8);
+$('tabPs').onclick = () => { S.psTab = 'ps'; refreshAll(); };
+$('tabIb').onclick = () => { S.psTab = 'ib'; refreshAll(); };
+// メニュー
+const menuOpen = o => { $('menuPop').hidden = !o; $('menuBtn').setAttribute('aria-expanded', o); };
+$('menuBtn').onclick = e => { e.stopPropagation(); menuOpen($('menuPop').hidden); };
+document.addEventListener('pointerdown', e => { if (!$('menuPop').hidden && !e.target.closest('.mwrap')) menuOpen(false); });
+$('menuPop').addEventListener('click', () => menuOpen(false));
+$('menuOnion').onclick = () => $('tglOnion').click();
+$('menuSave').onclick = () => $('saveProj').click();
+$('menuOpen').onclick = () => $('loadProj').click();
+
+function refreshAll() {
+  document.querySelectorAll('.steps button').forEach(b => b.classList.toggle('on', +b.dataset.step === S.step));
+  $('side1').hidden = S.step !== 1; $('side2').hidden = S.step !== 2; $('side3').hidden = S.step !== 3; $('side4').hidden = S.step !== 4;
+  $('psPane').hidden = S.psTab === 'ib'; $('ibPane').hidden = S.psTab !== 'ib';
+  $('tabPs').classList.toggle('on', S.psTab !== 'ib'); $('tabIb').classList.toggle('on', S.psTab === 'ib');
+  $('strip').style.display = S.step === 1 ? 'none' : '';
+  $('sub_rig').classList.toggle('on', S.sub === 'rig'); $('sub_parts').classList.toggle('on', S.sub === 'parts');
+  $('rigHelp').hidden = S.sub !== 'rig'; $('partsHelp').hidden = S.sub !== 'parts';
+  $('tolVal').textContent = S.tol; $('tol').value = S.tol; $('brushVal').textContent = $('brush').value; $('fpsVal').textContent = S.fps + ' fps'; $('fps').value = S.fps;
+  renderTools(); renderChips(); updateHint(); updateUndo();
+  if (S.step >= 2) { renderFrameSide(); thumbs.clear(); renderStrip(); }
+  renderGenSide();
+  requestAnimationFrame(() => { resize(); });
+}
+
+// ---------------- 再生 ----------------
+function playOrder() { const o = []; S.frames.forEach((f, i) => { for (let h = 0; h < (f.hold || 1); h++) o.push(i); }); if ($('pingpong').checked && S.frames.length > 2) { const back = []; for (let i = S.frames.length - 2; i >= 1; i--) for (let h = 0; h < (S.frames[i].hold || 1); h++) back.push(i); o.push(...back); } return o; }
+let previewing = false, pvCur = 0;
+function startPreview() { if (S.frames.length < 2) return toast('2コマ以上でプレビューできます'); pvCur = S.cur; previewing = true; playIdx = Math.max(0, playOrder().indexOf(S.cur)); $('pvBtn').textContent = '■ プレビュー停止'; $('pvBtn').classList.add('on'); startPlay(); }
+$('pvBtn').onclick = () => previewing ? stopPlay() : startPreview();
+function startPlay() { $('playBtn').textContent = '■ 停止'; let last = performance.now(); const tick = now => { if (now - last >= 1000 / S.fps) { last = now; playIdx = (playIdx + 1) % playOrder().length; const fi = playOrder()[playIdx]; if (fi !== S.cur) { S.cur = fi; document.querySelectorAll('.fr').forEach((b, i) => b.classList.toggle('on', i === fi)); } draw(); } playT = requestAnimationFrame(tick); }; playT = requestAnimationFrame(tick); }
+function stopPlay() {
+  if (playT) cancelAnimationFrame(playT); playT = null; $('playBtn').textContent = '▶ 再生';
+  if (previewing) { previewing = false; S.cur = pvCur; $('pvBtn').textContent = '▶ プレビュー'; $('pvBtn').classList.remove('on'); refreshAll(); }
+}
+$('playBtn').onclick = () => playT ? stopPlay() : startPlay();
+
+// ---------------- 書き出し ----------------
+function renderFrameCanvas(i) {
+  const A = area(), c = mkCanvas(A.w, A.h), g = c.getContext('2d'); g.translate(-A.x, -A.y); drawFinal(g, i, useGenOut()); return c;
+}
+function exportCells() {
+  const idx = []; S.frames.forEach((f, i) => { const n = $('exHold').checked ? f.hold || 1 : 1; for (let h = 0; h < n; h++) idx.push(i); });
+  const cans = S.frames.map((_, i) => renderFrameCanvas(i));
+  // 全コマ共通の範囲で切り出す（キャラの位置関係を保つ）
+  const w = cans[0].width, h = cans[0].height; let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (const c of cans) { const d = c.getContext('2d').getImageData(0, 0, w, h).data; for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 10) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } }
+  if (x1 < 0) { x0 = 0; y0 = 0; x1 = w - 1; y1 = h - 1; }
+  const m = 8; x0 = Math.max(0, x0 - m); y0 = Math.max(0, y0 - m); x1 = Math.min(w - 1, x1 + m); y1 = Math.min(h - 1, y1 + m);
+  const cw = x1 - x0 + 1, ch = y1 - y0 + 1;
+  return idx.map(i => { const c = mkCanvas(cw, ch), g = c.getContext('2d'); if ($('exBg').value === 'green') { g.fillStyle = '#00ff00'; g.fillRect(0, 0, cw, ch); } g.drawImage(cans[i], -x0, -y0); return c; });
+}
+$('exSheet').onclick = async () => {
+  const cells = exportCells(), n = cells.length, v = $('exCols').value;
+  const cols = v === 'row' ? n : v === 'col' ? 1 : Math.min(n, +v), rows = Math.ceil(n / cols), W = cells[0].width, H = cells[0].height;
+  const c = mkCanvas(W * cols, H * rows), g = c.getContext('2d');
+  cells.forEach((cc, i) => g.drawImage(cc, (i % cols) * W, Math.floor(i / cols) * H));
+  await saveFile(`stick_anim_sheet_${n}f.png`, await canvasBlob(c));
+};
+const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(b) { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC_TABLE[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function makeZip(files) {
+  const enc = new TextEncoder(), chunks = [], central = []; let offset = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name), crc = crc32(f.bytes), size = f.bytes.length;
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true);
+    h.setUint32(14, crc, true); h.setUint32(18, size, true); h.setUint32(22, size, true); h.setUint16(12, 0x21, true); h.setUint16(26, name.length, true);
+    chunks.push(h.buffer, name, f.bytes);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true);
+    c.setUint32(16, crc, true); c.setUint32(20, size, true); c.setUint32(24, size, true); c.setUint16(28, name.length, true);
+    c.setUint16(14, 0x21, true); c.setUint32(42, offset, true);
+    central.push(c.buffer, name); offset += 30 + name.length + size;
+  }
+  const cdSize = central.reduce((a, b) => a + b.byteLength, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, cdSize, true); e.setUint32(16, offset, true);
+  return new Blob([...chunks, ...central, e.buffer], { type: 'application/zip' });
+}
+$('exZip').onclick = async () => {
+  const cells = exportCells(), files = [];
+  for (let i = 0; i < cells.length; i++) files.push({ name: `frame_${String(i + 1).padStart(2, '0')}.png`, bytes: new Uint8Array(await (await canvasBlob(cells[i])).arrayBuffer()) });
+  await saveFile('stick_anim_frames.zip', makeZip(files));
+};
+
+// ---------------- 保存・読込 ----------------
+function b64FromBytes(u8) { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
+function bytesFromB64(b) { const s = atob(b), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+function projectData(forFile) {
+  const used = genInUse(); for (const id of Object.keys(S.gen)) if (!used.has(id)) { delete S.gen[id]; genImgs.delete(id); }
+  return { app: 'stick-animator', v: 2, img: S.img.src, tol: S.tol, rig: S.rig, frames: S.frames, fps: S.fps, gen: S.gen,
+    labels: S.labels ? (forFile ? b64FromBytes(S.labels) : S.labels) : null };
+}
+async function applyProject(d) {
+  const im = await loadImage(d.img);
+  S.img = { src: d.img, w: im.width, h: im.height }; S.tol = d.tol ?? 45;
+  base = mkCanvas(im.width, im.height); base.getContext('2d').drawImage(im, 0, 0); computeForeground();
+  S.rig = d.rig; ensureSpine(S.rig); S.fps = d.fps || 12;
+  S.frames = d.frames?.length ? d.frames.map(f => ({ side: f.side || 'F', hold: f.hold || 1, pose: migratePose(f.pose), ...(f.ai ? { ai: f.ai } : {}) })) : [newFrame()];
+  S.gen = d.gen || {}; genImgs.clear();
+  S.labels = d.labels ? (typeof d.labels === 'string' ? bytesFromB64(d.labels) : new Uint8Array(d.labels)) : null;
+  if (S.labels && S.labels.length !== im.width * im.height) S.labels = null;
+  if (S.labels && (d.v || 1) < 2) splitTorso(S.labels, true);
+  if (S.labels) buildOverlay();
+  partsDirty = true; thumbs.clear(); S.cur = Math.min(S.cur, S.frames.length - 1);
+}
+$('saveProj').onclick = async () => saveFile('stick_anim_project.json', new Blob([JSON.stringify(projectData(true))], { type: 'application/json' }));
+$('loadProj').onclick = () => $('fileProj').click();
+$('fileProj').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try { const d = JSON.parse(await f.text()); if (d.app !== 'stick-animator') throw new Error('このアプリのプロジェクトファイルではありません'); pushUndo(); await applyProject(d); S.cur = 0; setStep(2); fit(); afterChange(); toast('プロジェクトを開きました'); }
+  catch (err) { toast('開けませんでした：' + err.message); }
+};
+// IndexedDB に自動保存（使えない環境では何もしない）
+const DB = { db: null,
+  open() { return new Promise(res => { try { const r = indexedDB.open('stick-animator', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => { this.db = r.result; res(true); }; r.onerror = () => res(false); } catch { res(false); } }); },
+  put(k, v) { try { this.db?.transaction('kv', 'readwrite').objectStore('kv').put(v, k); } catch {} },
+  get(k) { return new Promise(res => { try { const q = this.db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(null); } catch { res(null); } }); },
+};
+let saveT = null;
+function afterChange() { clearTimeout(saveT); saveT = setTimeout(() => { if (S.img) DB.put('project', projectData(false)); }, 700); renderStripSoon(); if (S.step === 2) renderFrameSide(); renderGenSide(); }
+function savePrefs() { try { localStorage.setItem('sa_prefs', JSON.stringify({ onion: S.onion, skel: S.skel, fingerPaint: S.fingerPaint })); } catch {} }
+
+// 画像読み込み
+async function loadNewImage(src) {
+  const im = await loadImage(src); const s = Math.min(1, MAX_SIDE / Math.max(im.width, im.height));
+  const w = Math.round(im.width * s), h = Math.round(im.height * s);
+  base = mkCanvas(w, h); base.getContext('2d').drawImage(im, 0, 0, w, h);
+  S.img = { src: base.toDataURL('image/png'), w, h };
+  computeForeground(); autoRig(); S.labels = null; partsDirty = true; S.frames = [newFrame()]; S.cur = 0; S.gen = {}; genImgs.clear();
+  undoStack.length = 0; redoStack.length = 0; thumbs.clear();
+  S.step = 1; S.sub = 'rig';
+  refreshAll(); requestAnimationFrame(fit); afterChange();
+  toast('骨格を仮置きしました。点をドラッグして関節に合わせてください');
+}
+$('menuLoad').onclick = $('loadBtn2').onclick = () => $('fileImg').click();
+$('fileImg').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; try { await loadNewImage(await fileToDataURL(f)); } catch { toast('画像を読み込めませんでした'); } };
+async function loadSample() {
+  if (!SAMPLE) return;
+  await applyProject(clone(SAMPLE.project)); S.labels = SAMPLE.labels ? await decodeLabels(SAMPLE.labels) : null;
+  if (S.labels && (SAMPLE.project.v || 1) < 2) splitTorso(S.labels, true);
+  if (S.labels) buildOverlay(); partsDirty = true; undoStack.length = 0; redoStack.length = 0;
+  S.selPart = 'bU'; S.step = 2; S.cur = Math.min(3, S.frames.length - 1); refreshAll(); requestAnimationFrame(fit); afterChange();
+}
+$('sampleBtn').onclick = () => { const b = $('sampleBtn');
+  if (!b.classList.contains('confirm')) { b.classList.add('confirm'); b.textContent = '今の作業が消えます。もう一度押す'; setTimeout(() => { b.classList.remove('confirm'); b.textContent = 'サンプルに戻す'; }, 3000); return; }
+  b.classList.remove('confirm'); b.textContent = 'サンプルに戻す'; loadSample(); };
+// パーツ分け結果は PNG の赤チャンネルに入れて持ち運ぶ
+async function decodeLabels(src) {
+  const im = await loadImage(src), c = mkCanvas(im.width, im.height), g = c.getContext('2d'); g.drawImage(im, 0, 0);
+  const d = g.getImageData(0, 0, im.width, im.height).data, L = new Uint8Array(im.width * im.height);
+  for (let i = 0; i < L.length; i++) L[i] = d[i * 4]; return L.length === S.img.w * S.img.h ? L : null;
+}
+function encodeLabels() {
+  const { w, h } = S.img, c = mkCanvas(w, h), g = c.getContext('2d'), id = new ImageData(w, h);
+  for (let i = 0; i < w * h; i++) { id.data[i * 4] = S.labels[i]; id.data[i * 4 + 3] = 255; } g.putImageData(id, 0, 0); return c.toDataURL('image/png');
+}
+window.__dev = { curVer, genStale, drawPuppetExt: (g, p) => drawPuppet(g, p), PRESETS, poseFromSpec, get view() { return view; }, ik, setDir, zeroPose, newFrame, S, encodeLabels, segment, buildParts, solve, refreshAll, fit, draw, projectData, applyProject, loadSample, setStep };
+
+// ---------------- 起動 ----------------
+(async () => {
+  S.onion = true; S.skel = true; S.fingerPaint = false;
+  try { Object.assign(S, JSON.parse(localStorage.getItem('sa_prefs') || '{}')); } catch {}
+  renderPalette(); loadGenSettings();
+  window.addEventListener('resize', () => { resize(); clearTimeout(window._fitT); window._fitT = setTimeout(fit, 150); });
+  new ResizeObserver(() => resize()).observe($('stageWrap'));
+  const ok = await DB.open(); let saved = ok ? await DB.get('project') : null;
+  try { if (saved) { await applyProject(saved); S.step = S.frames.length > 1 ? 2 : 1; S.cur = S.frames.length > 1 ? 1 : 0; refreshAll(); requestAnimationFrame(fit); return; } } catch { }
+  if (SAMPLE) await loadSample(); else refreshAll();
+})();
+</script>
+</body></html>
