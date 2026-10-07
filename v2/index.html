@@ -68,7 +68,37 @@
   .lbl { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
   input[type=range] { flex: 1; min-width: 140px; accent-color: var(--accent); }
   pre { white-space: pre-wrap; font-size: 12px; color: var(--muted); }
+  .sp { flex: 1; }
+  .num { font-variant-numeric: tabular-nums; min-width: 2em; text-align: center; display: inline-block; }
+  button.danger { color: var(--err); }
+  .ed { display: grid; grid-template-columns: 340px 1fr; gap: 12px; align-items: start; }
+  .panel { display: flex; flex-direction: column; gap: 10px; position: sticky; top: 56px; max-height: calc(100vh - 64px); overflow: auto; }
+  .bigBtns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; position: sticky; top: 0; z-index: 2; background: var(--desk); padding-bottom: 4px; }
+  .bigBtns button { padding: 12px 0; font-weight: 700; }
+  .stageCol { min-width: 0; }
+  #stage { display: block; width: auto; max-width: 100%; max-height: 64vh; margin: 0 auto; background: #fff; border-radius: 10px; touch-action: none; }
+  .strip { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+  #frames { display: flex; gap: 6px; overflow-x: auto; flex: 1; padding: 4px 2px; }
+  .fr { flex: none; position: relative; padding: 2px; border-radius: 8px; border: 2px solid transparent; }
+  .fr.on { border-color: var(--accent); }
+  .fr canvas { width: 64px; height: 64px; display: block; border-radius: 6px; background: #fff; object-fit: contain; }
+  .fr span { position: absolute; left: 6px; top: 3px; font-size: 11px; color: #222; font-weight: 700; }
+  .arrow { font-size: 20px; padding: 10px 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .chips button { padding: 6px 12px; border-radius: 999px; }
+  .chips button.r { box-shadow: inset 4px 0 0 #dc4646; } .chips button.l { box-shadow: inset 4px 0 0 #3c6ee1; }
+  .chips button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  .gauge { display: grid; grid-template-columns: 6.6em 34px minmax(0, 1fr) 34px 4.4em; gap: 4px; align-items: center; margin: 6px 0; font-size: 13px; }
+  .gauge input[type=range] { min-width: 0; }
+  .gauge input[type=number] { width: 100%; background: var(--panel2); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px; font: inherit; }
+  .seg { display: flex; gap: 4px; }
+  .seg button { flex: 1; }
+  .seg button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
   @media (max-width: 820px) {
+    .ed { grid-template-columns: 1fr; }
+    .panel { position: static; max-height: none; order: 2; }
+    .bigBtns { top: var(--hh, 0px); }
+    .stageCol { order: 1; }
     .cols, .p2 { grid-template-columns: 1fr; }
     .flist { flex-direction: row; overflow-x: auto; }
     .fitem { min-width: 130px; }
@@ -82,7 +112,8 @@
   <nav>
     <button data-p="0">0 立ち絵</button>
     <button data-p="1">1 三面図</button>
-    <button data-p="2">2 ポーズと生成</button>
+    <button data-p="2">2 コマ作成</button>
+    <button data-p="3">3 画像生成</button>
     <button data-p="s">⚙ AI設定</button>
   </nav>
   <span id="busy"></span>
@@ -143,28 +174,99 @@
     </div>
   </section>
 
-  <!-- 工程2 ポーズと生成 -->
+  <!-- 工程2 コマ作成（3D人形でアニメを作る） -->
   <section id="p2" class="page" hidden>
+    <div class="ed">
+      <div class="panel">
+        <div class="bigBtns">
+          <button id="frDel" class="danger">削除</button>
+          <button id="frReset">リセット</button>
+          <button id="undo">↶ 戻す</button>
+        </div>
+        <div class="card">
+          <div class="row" style="margin-top:0">
+            <b id="frTitle" style="color:var(--accent)"></b>
+            <span class="sp"></span>
+            <span class="hint" style="margin:0">表示</span><button id="holdM" class="small">−</button><span id="holdV" class="num"></span><button id="holdP" class="small">＋</button>
+          </div>
+          <div id="partChips" class="chips" role="radiogroup" aria-label="動かすパーツ"></div>
+          <div class="row"><b id="partName"></b><span class="sp"></span><button id="partReset" class="small">このパーツを戻す</button></div>
+          <div id="gauges"></div>
+          <p class="hint">人形の点を指やペンでつかんでも動かせます。「体の向き」は「全身」にあります。</p>
+        </div>
+        <div class="card">
+          <div class="seg"><button id="tabPs" class="on">プリセット</button><button id="tabIb">中割り</button></div>
+          <div id="psPane">
+            <div class="row">
+              <select id="psName" style="flex:1"></select>
+              <select id="psDir">
+                <option value="90">右向き</option><option value="60" selected>右斜め前</option><option value="0">正面</option><option value="300">左斜め前</option><option value="270">左向き</option>
+              </select>
+            </div>
+            <div class="row">
+              <select id="psMode"><option value="replace">今のコマと置き換え</option><option value="append">最後に追加</option></select>
+              <label><input type="checkbox" id="psIb" checked> 中割りも入れる</label>
+            </div>
+            <button id="psBtn" style="width:100%">プリセットを読み込む</button>
+            <p class="hint">構えは左足・左手が前です（ジャブ＝左手、ストレート＝右手、前足キック＝左足、後ろ足キック＝右足）。</p>
+          </div>
+          <div id="ibPane" hidden>
+            <div class="seg" style="margin-top:8px"><button id="ibModeAdd" class="on">コマを追加</button><button id="ibModeFix">今のコマを修正</button></div>
+            <div class="row" id="ibAddRow"><span>次のコマとの間に</span><select id="ibN"><option>1</option><option selected>2</option><option>3</option><option>4</option></select><span>枚を追加</span></div>
+            <div class="row" id="ibFixRow" hidden><span>このコマから</span><select id="ibTo"></select><span>枚うしろのコマまでの間を作り直す</span></div>
+            <div class="row"><span>動きの緩急</span>
+              <select id="ibEase"><option value="linear">等速</option><option value="smooth" selected>なめらか</option><option value="in">だんだん速く</option><option value="out">だんだん遅く</option></select></div>
+            <button id="ibBtn" style="width:100%">中割りを自動生成</button>
+            <p id="ibNote" class="hint"></p>
+          </div>
+        </div>
+        <button id="toGen" class="pri">動きが決まったら：画像生成へ</button>
+      </div>
+      <div class="stageCol">
+        <div class="row" style="margin-top:0">
+          <label><input type="checkbox" id="onion" checked> 前のコマ</label>
+          <label><input type="checkbox" id="dots" checked> 関節の点</label>
+          <span class="sp"></span>
+          <button id="zOut" class="small" aria-label="縮小">−</button><span id="zVal" class="num"></span><button id="zIn" class="small" aria-label="拡大">＋</button>
+        </div>
+        <canvas id="stage" width="768" height="768"></canvas>
+        <div class="strip">
+          <button id="frPrev" class="arrow" aria-label="前のコマ">◁</button>
+          <div id="frames"></div>
+          <button id="frNext" class="arrow" aria-label="次のコマ">▷</button>
+        </div>
+        <div class="row">
+          <button id="frAdd">＋ 追加</button><button id="frCopy">前をコピー</button>
+          <span class="sp"></span>
+          <button id="play2">▶ 再生</button>
+          <span class="hint" style="margin:0">速さ</span><input type="range" id="fps" min="2" max="24" value="8" style="max-width:120px;min-width:80px"><span id="fpsVal" class="num"></span>
+          <label><input type="checkbox" id="pingpong"> 往復</label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 工程3 画像生成 -->
+  <section id="p3" class="page" hidden>
     <div class="p2">
       <div id="frameList" class="flist"></div>
       <div class="card">
-        <div class="row">
+        <div class="row" style="margin-top:0">
           <span>表示</span>
           <select id="viewMode"><option value="side">並べる</option><option value="over">重ねる</option><option value="gen">生成だけ</option></select>
           <button id="play">▶ 通して見る</button>
+          <span class="sp"></span>
+          <button id="exSheet" class="small">スプライトシートを保存</button>
         </div>
         <div id="pair" class="pair">
           <div id="manBox"><div class="lbl">デッサン人形（赤＝右半身、青＝左半身）</div><canvas id="manCv"></canvas></div>
           <div><div class="lbl">生成結果 <span id="vNum"></span></div><canvas id="genCv"></canvas></div>
         </div>
-        <div class="row">
-          <span>体の向き</span><input type="range" id="yaw" min="0" max="345" step="15">
-          <span id="yawLbl"></span>
-        </div>
         <p class="hint" id="viewLbl"></p>
         <div class="row">
-          <button id="fGen" class="pri">このポーズで生成</button>
-          <button id="fAll">5ポーズまとめて生成</button>
+          <button id="fGen" class="pri">このコマを生成</button>
+          <button id="fAll">未生成のコマをまとめて生成</button>
+          <button id="fRedo" class="small">全コマ作り直し</button>
           <button id="fStop" hidden>止める</button>
           <label><input type="checkbox" id="usePrev" checked> 前のコマも添える</label>
         </div>
@@ -172,6 +274,7 @@
           <button id="vPrev" class="small">◀ 前の版</button>
           <button id="vNext" class="small">次の版 ▶</button>
           <button id="vDrop" class="small">この版を消す</button>
+          <button id="toPose" class="small">人形で直す</button>
         </div>
         <div class="row">
           <input type="text" id="fFix" placeholder="直したいこと（例：右腕をもっとまっすぐ前に）">
@@ -231,18 +334,11 @@ const VIEWS = [
   { k: 'back', ja: '背面', en: 'BACK view (we see the character from behind)' },
   { k: 'left', ja: '左向き', en: 'side profile facing toward the LEFT edge of the image (we see the character\'s left side)' },
 ];
-const PRESETS = [
-  { k: 'stand', ja: '立ち', yaw: 0, p: { armL: { s: 28 }, armR: { s: 28 }, elbowL: 8, elbowR: 8, legL: { s: 4 }, legR: { s: 4 } } },
-  { k: 'walk', ja: '歩き', yaw: 45, p: { legR: { f: 28 }, kneeR: 8, legL: { f: -18 }, kneeL: 28, armR: { f: -25, s: 8 }, elbowR: 15, armL: { f: 25, s: 8 }, elbowL: 25, spine: { t: 5 } } },
-  { k: 'punch', ja: '右ストレート', yaw: 30, p: { spine: { t: 25, f: 5 }, armR: { f: 88, s: 4 }, elbowR: 3, armL: { f: 55, s: 18 }, elbowL: 120, legL: { f: 24 }, kneeL: 18, legR: { f: -22, s: 4 }, kneeR: 8 } },
-  { k: 'kick', ja: '右前蹴り', yaw: 60, p: { legR: { f: 85 }, kneeR: 10, legL: { f: -6 }, kneeL: 15, spine: { f: -12 }, armR: { f: 30, s: 20 }, elbowR: 100, armL: { f: 50, s: 15 }, elbowL: 110 } },
-  { k: 'crouch', ja: 'しゃがみ', yaw: 0, p: { legL: { f: 75, s: 14 }, kneeL: 125, legR: { f: 75, s: 14 }, kneeR: 125, spine: { f: 35 }, head: { f: -25 }, armL: { f: 50, s: 10 }, elbowL: 60, armR: { f: 50, s: 10 }, elbowR: 60 } },
-];
 const freshState = () => ({
   v: 2, inputs: [], crop: null, poseType: 'A', memo: '',
   cands: [], sel: -1, stand: null, standId: null,
   sheet: { raw: null, views: {}, flags: {}, ok: false, id: null, base: null },
-  frames: PRESETS.map(p => ({ k: p.k, yaw: p.yaw, vers: [], cur: -1 })), fi: 0,
+  frames: [{ id: 'f0', pose: null, hold: 1, vers: [], cur: -1 }], fi: 0, fps: 8,
 });
 let S = freshState();
 const DB = { db: null,
@@ -265,7 +361,7 @@ function saveSettings() {
   localStorage.setItem('sa2_opt', JSON.stringify({ n: $('candN').value, aspect: $('aspect').value }));
 }
 ['genKey', 'genModel', 'candN'].forEach(id => $(id).addEventListener('change', saveSettings));
-$('aspect').addEventListener('change', () => { saveSettings(); man.clear(); renderP2(); });
+$('aspect').addEventListener('change', () => { saveSettings(); });
 
 // ---------- Gemini ----------
 let busyN = 0;
@@ -375,7 +471,8 @@ let page = '0';
 function show(p) {
   page = p; document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
   document.querySelectorAll('.page').forEach(s => s.hidden = s.id !== 'p' + p);
-  if (p === '0') renderP0(); if (p === '1') renderP1(); if (p === '2') renderP2();
+  if (p !== '2' && typeof playT2 !== 'undefined' && playT2) stopPlay2(); if (p !== '3' && playT) $('play').click();
+  if (p === '0') renderP0(); if (p === '1') renderP1(); if (p === '2') renderP2(); if (p === '3') renderP3();
 }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.p));
 function setState(id, msg, cls = '') { const e = $(id); e.textContent = msg; e.className = 'state ' + cls; }
@@ -584,7 +681,7 @@ async function redoView(v, fix) {
 }
 $('sheetOk').onclick = () => {
   if (VIEWS.some(v => !S.sheet.views[v.k])) return setState('sheetState', '4つの向きがそろっていません', 'err');
-  S.sheet.ok = true; save(); setState('sheetState', '三面図を確定しました。「2 ポーズと生成」へ進んでください。', 'ok'); show('2');
+  S.sheet.ok = true; save(); setState('sheetState', '三面図を確定しました。「2 コマ作成」で動きを作ってください。', 'ok'); show('2');
 };
 function renderP1() {
   const V = $('views'); V.innerHTML = '';
@@ -613,11 +710,17 @@ const rx = d => { const c = Math.cos(R(d)), s = Math.sin(R(d)); return [[1, 0, 0
 const ry = d => { const c = Math.cos(R(d)), s = Math.sin(R(d)); return [[c, 0, s], [0, 1, 0], [-s, 0, c]]; };
 const rz = d => { const c = Math.cos(R(d)), s = Math.sin(R(d)); return [[c, -s, 0], [s, c, 0], [0, 0, 1]]; };
 // 座標：x＝画面の右、y＝上、z＝カメラ側。yaw 0 でキャラはカメラを向く（キャラの左手が画面の右）
-// f＝前に振る角度、s＝外に開く角度、t＝ひねり
+// f＝前に振る角度、s＝外に開く角度、t＝ひねり。ひじ・ひざは曲げる角度
 const torsoRot = (r = {}) => mul(ry(r.t || 0), mul(rx(r.f || 0), rz(-(r.s || 0))));
 const limbRot = (sg, r = {}) => mul(rz(sg * (r.s || 0)), mul(rx(-(r.f || 0)), ry(sg * (r.t || 0))));
-function solvePose(p, yaw) {
-  const J = {}, Rp = mul(ry(yaw), torsoRot(p.body)), pel = [0, 0, 0];
+const clone = o => JSON.parse(JSON.stringify(o));
+const DEF_POSE = () => ({ yaw: 0, x: 0, lift: 0, body: { f: 0, s: 0, t: 0 }, spine: { f: 0, s: 0, t: 0 }, head: { f: 0, s: 0, t: 0 },
+  armL: { f: 0, s: 28, t: 0 }, armR: { f: 0, s: 28, t: 0 }, elbowL: 8, elbowR: 8, legL: { f: 0, s: 4, t: 0 }, legR: { f: 0, s: 4, t: 0 }, kneeL: 0, kneeR: 0 });
+function mergePose(base, d) { const p = clone(base); for (const [k, v] of Object.entries(d || {})) { if (v && typeof v === 'object') p[k] = Object.assign({}, p[k], v); else p[k] = v; } return p; }
+const getP = (p, path) => { const [a, b] = path.split('.'); return b ? (p[a]?.[b] || 0) : (p[a] || 0); };
+const setP = (p, path, v) => { const [a, b] = path.split('.'); if (b) { p[a] = p[a] || {}; p[a][b] = v; } else p[a] = v; };
+function solvePose(p) {
+  const J = {}, Rp = mul(ry(p.yaw || 0), torsoRot(p.body)), pel = [0, 0, 0];
   J.pelvis = pel;
   const Rc = mul(Rp, torsoRot(p.spine)); J.chest = add(pel, app(Rp, [0, 0.17, 0]));
   J.neck = add(J.chest, app(Rc, [0, 0.11, 0]));
@@ -630,18 +733,21 @@ function solvePose(p, yaw) {
     const Rl = mul(Rp, limbRot(sg, p['leg' + S_])); J['kn' + S_] = add(J['hp' + S_], app(Rl, [0, -0.235, 0]));
     const Rk = mul(Rl, rx(p['knee' + S_] || 0)); J['an' + S_] = add(J['kn' + S_], app(Rk, [0, -0.235, 0])); J['to' + S_] = add(J['an' + S_], app(Rk, [0, -0.02, 0.075]));
   }
-  // 一番低いところを床（y=0）に
-  let lo = Infinity; for (const [k, v] of Object.entries(J)) if (Array.isArray(v) && typeof v[0] === 'number') lo = Math.min(lo, v[1] - (k === 'head' ? 0.065 : 0.03));
-  for (const v of Object.values(J)) if (Array.isArray(v) && typeof v[0] === 'number') v[1] -= lo - (p.lift || 0);
+  // 一番低いところを床（y=0）に置き、そこから「位置 上下」だけ持ち上げる
+  const pts = Object.entries(J).filter(([, v]) => Array.isArray(v) && typeof v[0] === 'number');
+  let lo = Infinity; for (const [k, v] of pts) lo = Math.min(lo, v[1] - (k === 'head' ? 0.065 : 0.03));
+  for (const [, v] of pts) { v[1] -= lo - (p.lift || 0); v[0] += p.x || 0; }
   return J;
 }
 function frameSize() { return { '1:1': [768, 768], '3:4': [672, 896], '4:3': [896, 672] }[settings().aspect] || [768, 768]; }
-function drawMannequin(g, W, H, p, yaw) {
-  const J = solvePose(p, yaw), unit = Math.min(H * 0.82, W * 1.1), cx = W / 2, gy = H * 0.94;
-  const P = v => [cx + v[0] * unit, gy - v[1] * unit, v[2]];
-  const segs = [];
+function projector(W, H, zoom = 1) {
+  const unit = Math.min(H * 0.82, W * 1.1), cx = W / 2, gy = H * 0.94;
+  return v => [W / 2 + (cx + v[0] * unit - W / 2) * zoom, H / 2 + (gy - v[1] * unit - H / 2) * zoom, v[2]];
+}
+const RED = [220, 70, 70], BLUE = [60, 110, 225], GRAY = [150, 150, 155];
+function drawMannequin(g, W, H, p, o = {}) {
+  const J = solvePose(p), zoom = o.zoom || 1, P = projector(W, H, zoom), unit = Math.abs(P([1, 0, 0])[0] - P([0, 0, 0])[0]), segs = [];
   const seg = (a, b, r, col) => segs.push({ a: P(a), b: P(b), r: r * unit, col, z: (a[2] + b[2]) / 2 });
-  const RED = [220, 70, 70], BLUE = [60, 110, 225], GRAY = [150, 150, 155];
   seg(J.pelvis, J.chest, 0.07, GRAY); seg(J.chest, J.neck, 0.06, GRAY); seg(J.shL, J.shR, 0.04, GRAY); seg(J.hpL, J.hpR, 0.055, GRAY);
   for (const [S_, col] of [['L', BLUE], ['R', RED]]) {
     seg(J['sh' + S_], J['el' + S_], 0.033, col); seg(J['el' + S_], J['wr' + S_], 0.028, col); seg(J['wr' + S_], J['hd' + S_], 0.03, col);
@@ -649,10 +755,12 @@ function drawMannequin(g, W, H, p, yaw) {
   }
   segs.push({ head: true, c: P(J.head), r: 0.068 * unit, z: J.head[2] });
   segs.sort((a, b) => a.z - b.z);
-  g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
-  g.strokeStyle = '#dcdcdc'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, gy); g.lineTo(W, gy); g.stroke();
+  if (o.bg !== false) {
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+    const gy = P([0, 0, 0])[1]; g.strokeStyle = '#dcdcdc'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, gy); g.lineTo(W, gy); g.stroke();
+  }
   const shade = (col, z) => { const k = 0.75 + Math.max(-0.25, Math.min(0.25, z * 1.2)); return `rgb(${col.map(c => Math.round(Math.min(255, c * k))).join(',')})`; };
-  g.lineCap = 'round';
+  g.save(); g.globalAlpha = o.alpha ?? 1; g.lineCap = 'round';
   for (const s of segs) {
     if (s.head) {
       g.fillStyle = '#c9c9cc'; g.strokeStyle = '#555'; g.lineWidth = 2; g.beginPath(); g.arc(s.c[0], s.c[1], s.r, 0, 7); g.fill(); g.stroke();
@@ -666,17 +774,29 @@ function drawMannequin(g, W, H, p, yaw) {
     g.strokeStyle = '#333'; g.lineWidth = s.r * 2 + 3; g.beginPath(); g.moveTo(s.a[0], s.a[1]); g.lineTo(s.b[0], s.b[1]); g.stroke();
     g.strokeStyle = shade(s.col, s.z); g.lineWidth = s.r * 2; g.beginPath(); g.moveTo(s.a[0], s.a[1]); g.lineTo(s.b[0], s.b[1]); g.stroke();
   }
-  return J;
+  g.restore();
+  return { J, P };
 }
-const man = { cache: new Map(), clear() { this.cache.clear(); },
-  canvas(i) { const f = S.frames[i], key = f.yaw + '|' + settings().aspect; let c = this.cache.get(i); if (c && c.key === key) return c.cv;
-    const [W, H] = frameSize(), cv = mkCanvas(W, H); drawMannequin(cv.getContext('2d'), cv.width, cv.height, PRESETS[i].p, f.yaw); this.cache.set(i, { key, cv }); return cv; } };
+const sigOf = f => JSON.stringify(f.pose) + '|' + settings().aspect;
+// 生成に使う人形の絵（コマの大きさ・拡大なし）
+const manCache = new Map();
+function manCanvas(f) {
+  const key = sigOf(f); let c = manCache.get(key); if (c) return c;
+  const [W, H] = frameSize(); c = mkCanvas(W, H); drawMannequin(c.getContext('2d'), W, H, f.pose);
+  manCache.set(key, c); if (manCache.size > 80) manCache.delete(manCache.keys().next().value); return c;
+}
+const thumbCache = new Map();
+function thumbCanvas(f) {
+  const key = 't' + sigOf(f); let c = thumbCache.get(key); if (c) return c;
+  const [W, H] = frameSize(), s = 128 / Math.max(W, H); c = mkCanvas(W * s, H * s); drawMannequin(c.getContext('2d'), c.width, c.height, f.pose);
+  thumbCache.set(key, c); if (thumbCache.size > 200) thumbCache.delete(thumbCache.keys().next().value); return c;
+}
 
 // ---------- ポーズの説明文 ----------
 const normYaw = y => ((y % 360) + 360) % 360;
 function facingText(yaw) {
   const a = normYaw(yaw);
-  const t = { 0: 'facing the viewer (front view)', 45: 'turned 45 degrees toward the viewer\'s right (three-quarter front view; we see the character\'s right side more)', 90: 'in side profile, facing toward the RIGHT edge of the image', 135: 'turned away, three-quarter back view, facing toward the back-right', 180: 'facing away from the viewer (back view)', 225: 'turned away, three-quarter back view, facing toward the back-left', 270: 'in side profile, facing toward the LEFT edge of the image', 315: 'turned 45 degrees toward the viewer\'s left (three-quarter front view; we see the character\'s left side more)' };
+  const t = { 0: 'facing the viewer (front view)', 45: 'turned toward the viewer\'s right (three-quarter front view; we see the character\'s right side more)', 90: 'in side profile, facing toward the RIGHT edge of the image', 135: 'turned away, three-quarter back view, facing toward the back-right', 180: 'facing away from the viewer (back view)', 225: 'turned away, three-quarter back view, facing toward the back-left', 270: 'in side profile, facing toward the LEFT edge of the image', 315: 'turned toward the viewer\'s left (three-quarter front view; we see the character\'s left side more)' };
   const n = Math.round(a / 45) * 45 % 360; return t[n] + (a % 45 ? ` (about ${a} degrees)` : '');
 }
 function facingJa(yaw) { const a = normYaw(yaw); return ['正面', '右斜め前', '右向き', '右斜め後ろ', '背面', '左斜め後ろ', '左向き', '左斜め前'][Math.round(a / 45) % 8]; }
@@ -684,8 +804,8 @@ function viewsFor(yaw) {
   const a = normYaw(yaw), ang = { front: 0, right: 90, back: 180, left: 270 }, d = k => { const x = Math.abs(a - ang[k]) % 360; return Math.min(x, 360 - x); };
   const ks = Object.keys(ang).sort((p, q) => d(p) - d(q)); return d(ks[0]) > 20 ? ks.slice(0, 2) : ks.slice(0, 1);
 }
-function describePose(i) {
-  const p = PRESETS[i].p, f = S.frames[i], J = solvePose(p, 0), out = [`Body orientation: ${facingText(f.yaw)}.`];
+function describePose(p) {
+  const J = solvePose(Object.assign({}, p, { yaw: 0, x: 0 })), out = [`Body orientation: ${facingText(p.yaw || 0)}.`];
   for (const [S_, sg, name] of [['R', -1, 'right'], ['L', 1, 'left']]) {
     const d = sub(J['hd' + S_], J['sh' + S_]), L = Math.hypot(...d), fw = d[2] / L, up = d[1] / L, out_ = d[0] * sg / L, e = p['elbow' + S_] || 0;
     let s;
@@ -702,27 +822,27 @@ function describePose(i) {
   for (const [S_, name] of [['R', 'right'], ['L', 'left']]) {
     const t = sub(J['kn' + S_], J['hp' + S_]), ang = Math.atan2(t[2], -t[1]) * 180 / Math.PI, k = p['knee' + S_] || 0;
     let s;
-    if (ang > 50 && k > 100 && J.pelvis[1] < 0.38) s = 'squatting: thigh pointing forward, knee deeply bent, foot flat on the ground';
+    if (ang > 50 && k > 100 && J.pelvis[1] - (p.lift || 0) < 0.38) s = 'squatting: thigh pointing forward, knee deeply bent, foot flat on the ground';
     else if (ang > 60) s = k < 30 ? `kicking: thigh raised forward to about ${Math.round(ang)} degrees with the leg extended straight forward` : `knee lifted high in front (thigh about ${Math.round(ang)} degrees forward)`;
     else if (ang > 12) s = 'stepping forward';
     else if (ang < -12) s = 'stepping back';
     else s = 'straight down under the hip';
     out.push(`${name[0].toUpperCase() + name.slice(1)} leg: ${s}${/squatting/.test(s) ? '' : k > 100 ? ', knee deeply bent' : k > 30 ? ', knee bent' : ''}.`);
   }
-  const sp = p.spine || {};
+  const sp = p.spine || {}, bd = p.body || {};
+  if (Math.abs(bd.f || 0) > 50) out.push(`Whole body tilted strongly ${bd.f > 0 ? 'forward' : 'backward'} (about ${Math.abs(Math.round(bd.f))} degrees), falling or lying.`);
   if ((sp.f || 0) > 15) out.push('Upper body leaning forward.'); else if ((sp.f || 0) < -8) out.push('Upper body leaning slightly back.');
-  if (Math.abs(sp.t || 0) > 15) out.push(`Upper body twisted so the ${sp.t > 0 ? 'right' : 'left'} shoulder comes forward.`);
-  if (J.pelvis[1] < 0.38) out.push('Crouching low, hips close to the ground.');
-  out.push('', 'How it looks IN THE PICTURE (use this to avoid mixing up left and right):', ...pictureText(i));
-  if ((p.lift || 0) > 0) out.push('Airborne: both feet off the ground.'); else out.push('Feet on the ground (same ground line as the mannequin).');
+  if (Math.abs((sp.t || 0) + (bd.t || 0)) > 15) out.push(`Upper body twisted so the ${(sp.t || 0) + (bd.t || 0) > 0 ? 'right' : 'left'} shoulder comes forward.`);
+  if (J.pelvis[1] - (p.lift || 0) < 0.38 && Math.abs(bd.f || 0) < 50) out.push('Crouching low, hips close to the ground.');
+  out.push('', 'How it looks IN THE PICTURE (use this to avoid mixing up left and right):', ...pictureText(p));
+  if ((p.lift || 0) > 0.02) out.push('Airborne: both feet off the ground (as high above the ground line as in IMAGE 1).'); else out.push('Feet on the ground (same ground line as the mannequin).');
   return out.join('\n');
 }
-
 // 画面上での見え方（手前／奥、絵の右側／左側）で手足を説明する。左右の取り違え対策
-function pictureText(i) {
-  const p = PRESETS[i].p, f = S.frames[i], J = solvePose(p, f.yaw), out = [];
+function pictureText(p) {
+  const J = solvePose(p), out = [];
   const side = (a, b, w) => { const dx = a[0] - b[0]; return Math.abs(dx) < 0.04 ? `in line with its ${w}` : `to the ${dx > 0 ? 'RIGHT' : 'LEFT'} of its ${w} in the picture`; };
-  const height = y => y > J.neck[1] ? 'above the shoulders' : y > J.chest[1] - 0.02 ? 'at chest/shoulder height' : y > J.pelvis[1] - 0.05 ? 'at hip height' : y > 0.12 ? 'below the hips' : 'down at the ground';
+  const height = y => y > J.neck[1] ? 'above the shoulders' : y > J.chest[1] - 0.02 ? 'at chest/shoulder height' : y > J.pelvis[1] - 0.05 ? 'at hip height' : y > (p.lift || 0) + 0.12 ? 'below the hips' : 'down at the ground';
   for (const [kind, a, b, end, label] of [['arm', 'elL', 'elR', 'hd', 'hand'], ['leg', 'knL', 'knR', 'to', 'foot']]) {
     const nearL = J[a][2] > J[b][2], diff = Math.abs(J[a][2] - J[b][2]) > 0.03;
     for (const [S_, col, name] of [['R', 'red', 'right'], ['L', 'blue', 'left']]) {
@@ -730,28 +850,255 @@ function pictureText(i) {
       out.push(`- The character's ${name.toUpperCase()} ${kind} (${col} in IMAGE 1)${diff ? ` is the ${near ? 'NEARER one (closer to the viewer, drawn in front)' : 'FARTHER one (behind, partly hidden)'}` : ''}; its ${label} is ${side(tip, root, kind === 'arm' ? 'shoulder' : 'hip')}, ${height(tip[1])}.`);
     }
   }
-  const a = normYaw(f.yaw);
+  const a = normYaw(p.yaw || 0);
   if (a >= 150 && a <= 210) out.push('- The character is seen from behind, so the character\'s right side appears on the RIGHT of the picture.');
   else if (a <= 30 || a >= 330) out.push('- The character faces the viewer, so the character\'s right side appears on the LEFT of the picture (mirror image).');
   return out;
 }
 
-// ---------- 工程2 生成 ----------
+// ---------- 工程2 コマ作成 ----------
+const PARTS = [
+  { k: 'all', ja: '全身', g: [['x', '位置 左右', -100, 100, 0.01], ['lift', '位置 上下', 0, 100, 0.01], ['yaw', '体の向き', 0, 359, 1]] },
+  { k: 'body', ja: '腰', g: [['body.f', '前後の傾き', -180, 180], ['body.s', '左右の傾き', -90, 90], ['body.t', 'ひねり', -90, 90]] },
+  { k: 'spine', ja: '胸', g: [['spine.f', '前後の傾き', -60, 90], ['spine.s', '左右の傾き', -45, 45], ['spine.t', 'ひねり', -70, 70]] },
+  { k: 'head', ja: '頭', g: [['head.f', 'うなずき', -60, 60], ['head.s', '首をかしげる', -45, 45], ['head.t', '首を回す', -80, 80]] },
+  { k: 'armR', ja: '右腕', side: 'r', g: [['armR.f', '前後に振る', -180, 180], ['armR.s', '横に開く', -30, 180], ['armR.t', 'ひねり', -90, 90], ['elbowR', 'ひじを曲げる', 0, 160]] },
+  { k: 'armL', ja: '左腕', side: 'l', g: [['armL.f', '前後に振る', -180, 180], ['armL.s', '横に開く', -30, 180], ['armL.t', 'ひねり', -90, 90], ['elbowL', 'ひじを曲げる', 0, 160]] },
+  { k: 'legR', ja: '右脚', side: 'r', g: [['legR.f', '前後に振る', -90, 130], ['legR.s', '横に開く', -30, 90], ['legR.t', 'ひねり', -60, 60], ['kneeR', 'ひざを曲げる', 0, 160]] },
+  { k: 'legL', ja: '左脚', side: 'l', g: [['legL.f', '前後に振る', -90, 130], ['legL.s', '横に開く', -30, 90], ['legL.t', 'ひねり', -60, 60], ['kneeL', 'ひざを曲げる', 0, 160]] },
+];
+const RANGE = {}; PARTS.forEach(pt => pt.g.forEach(([path, , mn, mx, sc]) => RANGE[path] = [mn * (sc || 1), mx * (sc || 1)]));
+// 人形の上でつかめる点
+const HANDLES = [
+  { j: 'pelvis', part: 'all' }, { j: 'neck', part: 'spine', ps: ['spine.f', 'spine.s'] }, { j: 'head', part: 'head', ps: ['head.f', 'head.s'] },
+  { j: 'elR', part: 'armR', ps: ['armR.f', 'armR.s'] }, { j: 'hdR', part: 'armR', ps: ['armR.f', 'armR.s', 'elbowR'] },
+  { j: 'elL', part: 'armL', ps: ['armL.f', 'armL.s'] }, { j: 'hdL', part: 'armL', ps: ['armL.f', 'armL.s', 'elbowL'] },
+  { j: 'knR', part: 'legR', ps: ['legR.f', 'legR.s'] }, { j: 'anR', part: 'legR', ps: ['legR.f', 'legR.s', 'kneeR'] },
+  { j: 'knL', part: 'legL', ps: ['legL.f', 'legL.s'] }, { j: 'anL', part: 'legL', ps: ['legL.f', 'legL.s', 'kneeL'] },
+];
+const newFrame = pose => ({ id: uid(), pose: pose || DEF_POSE(), hold: 1, vers: [], cur: -1 });
+let part = 'all', zoom = 1;
+const curF = () => S.frames[S.fi];
+// 元に戻す（生成した版は参照のまま残す）
+const undoStack = [];
+function pushUndo() { undoStack.push({ fi: S.fi, frames: S.frames.map(f => ({ ...f, pose: clone(f.pose) })) }); if (undoStack.length > 60) undoStack.shift(); }
+$('undo').onclick = () => { const u = undoStack.pop(); if (!u) return; S.frames = u.frames; S.fi = Math.min(u.fi, S.frames.length - 1); save(); renderP2(); };
+
+function renderChips() {
+  const C = $('partChips'); C.innerHTML = '';
+  for (const pt of PARTS) { const b = document.createElement('button'); b.textContent = pt.ja; b.className = (pt.k === part ? 'on ' : '') + (pt.side || ''); b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', pt.k === part);
+    b.onclick = () => { part = pt.k; renderChips(); renderGauges(); drawStage(); }; C.appendChild(b); }
+}
+function renderGauges() {
+  const pt = PARTS.find(p => p.k === part), G = $('gauges'), p = curF().pose; G.innerHTML = ''; $('partName').textContent = pt.ja + ' の調整';
+  for (const [path, ja, mn, mx, sc = 1] of pt.g) {
+    const d = document.createElement('div'); d.className = 'gauge';
+    d.innerHTML = `<span>${ja}</span><button class="small">−</button><input type="range" min="${mn}" max="${mx}" step="1"><button class="small">＋</button><input type="number" min="${mn}" max="${mx}" step="1">`;
+    const [mB, rg, pB, nm] = [d.children[1], d.children[2], d.children[3], d.children[4]], val = Math.round(getP(p, path) / sc);
+    rg.value = val; nm.value = val;
+    const setV = (v, undo) => { v = Math.max(mn, Math.min(mx, Math.round(+v))); if (undo) pushUndo(); setP(curF().pose, path, v * sc); rg.value = v; nm.value = v; afterPose(); };
+    rg.addEventListener('pointerdown', () => pushUndo()); rg.oninput = () => setV(rg.value, false);
+    nm.onchange = () => setV(nm.value, true);
+    const step = dv => () => setV((path === 'yaw' ? ((+rg.value + dv + 360) % 360) : +rg.value + dv), true);
+    mB.onclick = step(path === 'yaw' ? -15 : -5); pB.onclick = step(path === 'yaw' ? 15 : 5);
+    G.appendChild(d);
+  }
+}
+function syncGauges() { const pt = PARTS.find(p => p.k === part), p = curF().pose; [...$('gauges').children].forEach((d, k) => { const [path, , , , sc = 1] = pt.g[k], v = Math.round(getP(p, path) / sc); d.children[2].value = v; d.children[4].value = v; }); }
+function afterPose() { save(); drawStage(); renderStrip(); }
+
+// ステージ
+const stage = $('stage');
+let stageJ = null, stageP = null;
+function drawStage(poseOverride) {
+  const [W, H] = frameSize(); if (stage.width !== W || stage.height !== H) { stage.width = W; stage.height = H; }
+  const g = stage.getContext('2d'), f = curF();
+  g.fillStyle = '#fff'; g.fillRect(0, 0, W, H);
+  const P0 = projector(W, H, zoom), gy = P0([0, 0, 0])[1]; g.strokeStyle = '#dcdcdc'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, gy); g.lineTo(W, gy); g.stroke();
+  if (!poseOverride && $('onion').checked && S.fi > 0) drawMannequin(g, W, H, S.frames[S.fi - 1].pose, { zoom, bg: false, alpha: 0.22 });
+  const r = drawMannequin(g, W, H, poseOverride || f.pose, { zoom, bg: false }); stageJ = r.J; stageP = r.P;
+  if (!poseOverride && $('dots').checked) {
+    const pt = PARTS.find(p => p.k === part);
+    for (const h of HANDLES) { const q = stageP(stageJ[h.j]), on = h.part === part;
+      g.beginPath(); g.arc(q[0], q[1], on ? 9 : 7, 0, 7); g.fillStyle = on ? '#ff8a3d' : '#ffffffcc'; g.fill(); g.lineWidth = 2; g.strokeStyle = on ? '#7a3500' : '#555'; g.stroke(); }
+    if (pt) { g.fillStyle = '#666'; g.font = `${Math.round(W / 40)}px sans-serif`; g.fillText(`${S.fi + 1} / ${S.frames.length}　${facingJa(f.pose.yaw)}`, 12, Math.round(W / 30)); }
+  }
+}
+const stagePt = e => { const b = stage.getBoundingClientRect(); return [(e.clientX - b.left) * stage.width / b.width, (e.clientY - b.top) * stage.height / b.height]; };
+const pointers = new Map(); let sdrag = null, pinch = null;
+stage.addEventListener('pointerdown', e => {
+  stage.setPointerCapture(e.pointerId); pointers.set(e.pointerId, stagePt(e));
+  if (pointers.size === 2) { sdrag = null; const [a, b] = [...pointers.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), z: zoom }; return; }
+  if (!stageJ || playT2) return;
+  const m = stagePt(e), sc = stage.width / stage.getBoundingClientRect().width; let best = null, bd = 34 * sc;
+  for (const h of HANDLES) { const q = stageP(stageJ[h.j]), d = Math.hypot(q[0] - m[0], q[1] - m[1]); if (d < bd) { bd = d; best = h; } }
+  if (!best) return;
+  pushUndo(); part = best.part; renderChips(); renderGauges();
+  sdrag = { h: best, start: m, x0: curF().pose.x || 0, l0: curF().pose.lift || 0 };
+});
+stage.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return; pointers.set(e.pointerId, stagePt(e));
+  if (pinch && pointers.size === 2) { const [a, b] = [...pointers.values()]; zoom = Math.max(0.5, Math.min(3, pinch.z * Math.hypot(a[0] - b[0], a[1] - b[1]) / pinch.d)); $('zVal').textContent = Math.round(zoom * 100) + '%'; drawStage(); return; }
+  if (!sdrag) return;
+  const m = stagePt(e), p = curF().pose;
+  if (sdrag.h.j === 'pelvis') {
+    const u = Math.abs(stageP([1, 0, 0])[0] - stageP([0, 0, 0])[0]);
+    p.x = Math.max(RANGE.x[0], Math.min(RANGE.x[1], sdrag.x0 + (m[0] - sdrag.start[0]) / u));
+    p.lift = Math.max(0, Math.min(RANGE.lift[1], sdrag.l0 - (m[1] - sdrag.start[1]) / u));
+  } else solveDrag(p, sdrag.h, m);
+  syncGauges(); drawStage();
+});
+const endPtr = e => { pointers.delete(e.pointerId); if (pointers.size < 2) pinch = null; if (sdrag && !pointers.size) { sdrag = null; afterPose(); } };
+stage.addEventListener('pointerup', endPtr); stage.addEventListener('pointercancel', endPtr);
+// つかんだ点が指の位置に来るように、その部位の角度を少しずつ探す
+function solveDrag(p, h, m) {
+  const [W, H] = [stage.width, stage.height], P = projector(W, H, zoom), start = h.ps.map(k => getP(p, k));
+  const cost = () => { const q = P(solvePose(p)[h.j]); let c = (q[0] - m[0]) ** 2 + (q[1] - m[1]) ** 2; h.ps.forEach((k, i) => c += 0.02 * (getP(p, k) - start[i]) ** 2); return c; };
+  let best = cost();
+  for (const step of [16, 8, 4, 2, 1]) {
+    for (let it = 0; it < 6; it++) {
+      let moved = false;
+      for (const k of h.ps) for (const dv of [step, -step]) {
+        const old = getP(p, k), nv = Math.max(RANGE[k][0], Math.min(RANGE[k][1], old + dv)); if (nv === old) continue;
+        setP(p, k, nv); const c = cost(); if (c < best) { best = c; moved = true; } else setP(p, k, old);
+      }
+      if (!moved) break;
+    }
+  }
+  h.ps.forEach(k => setP(p, k, Math.round(getP(p, k))));
+}
+$('zIn').onclick = () => { zoom = Math.min(3, zoom * 1.2); $('zVal').textContent = Math.round(zoom * 100) + '%'; drawStage(); };
+$('zOut').onclick = () => { zoom = Math.max(0.5, zoom / 1.2); $('zVal').textContent = Math.round(zoom * 100) + '%'; drawStage(); };
+$('onion').onchange = () => drawStage(); $('dots').onchange = () => drawStage();
+
+// コマ一覧
+function renderStrip() {
+  const F = $('frames'); F.innerHTML = '';
+  S.frames.forEach((f, i) => {
+    const b = document.createElement('button'); b.className = 'fr' + (i === S.fi ? ' on' : ''); b.setAttribute('aria-label', `${i + 1}コマ目`);
+    b.appendChild(thumbCanvas(f).cloneNode()); b.lastChild.getContext('2d').drawImage(thumbCanvas(f), 0, 0);
+    const s = document.createElement('span'); s.textContent = `${i + 1}${f.hold > 1 ? ' ×' + f.hold : ''}`; b.appendChild(s);
+    b.onclick = () => { S.fi = i; save(); renderP2(); }; F.appendChild(b);
+  });
+  F.children[S.fi]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+$('frPrev').onclick = () => { if (S.fi > 0) { S.fi--; save(); renderP2(); } };
+$('frNext').onclick = () => { if (S.fi < S.frames.length - 1) { S.fi++; save(); renderP2(); } };
+$('frAdd').onclick = () => { pushUndo(); S.frames.splice(S.fi + 1, 0, newFrame(clone(curF().pose))); S.fi++; save(); renderP2(); };
+$('frCopy').onclick = () => { if (S.fi === 0) return; pushUndo(); curF().pose = clone(S.frames[S.fi - 1].pose); save(); renderP2(); };
+$('frDel').onclick = () => { if (S.frames.length < 2) { pushUndo(); S.frames[0] = newFrame(); S.fi = 0; } else { pushUndo(); S.frames.splice(S.fi, 1); S.fi = Math.min(S.fi, S.frames.length - 1); } save(); renderP2(); };
+$('frReset').onclick = () => { pushUndo(); const p = curF().pose; curF().pose = Object.assign(DEF_POSE(), { yaw: p.yaw, x: p.x }); save(); renderP2(); };
+$('partReset').onclick = () => { pushUndo(); const p = curF().pose, d = DEF_POSE(); PARTS.find(q => q.k === part).g.forEach(([path]) => { if (path !== 'yaw' && path !== 'x') setP(p, path, getP(d, path)); }); save(); renderP2(); };
+$('holdM').onclick = () => { pushUndo(); curF().hold = Math.max(1, curF().hold - 1); save(); renderP2(); };
+$('holdP').onclick = () => { pushUndo(); curF().hold = Math.min(12, curF().hold + 1); save(); renderP2(); };
+
+// プリセット（構え：左足・左手が前のオーソドックス）
+const G0 = { body: { t: -25 }, spine: { f: 5, t: -5 }, head: { f: 5, t: 28 }, armL: { f: 70, s: 20 }, elbowL: 115, armR: { f: 50, s: 25 }, elbowR: 135, legL: { f: 18, s: 6 }, kneeL: 18, legR: { f: -18, s: 6 }, kneeR: 22 };
+const GUARD = () => mergePose(DEF_POSE(), G0);
+const NEUTRAL = () => mergePose(DEF_POSE(), { armL: { s: 8 }, armR: { s: 8 }, elbowL: 12, elbowR: 12 });
+const WALK1 = { legL: { f: 25 }, kneeL: 5, legR: { f: -20 }, kneeR: 12, armL: { f: -22, s: 8 }, elbowL: 15, armR: { f: 22, s: 8 }, elbowR: 25 };
+const WALK2 = { legL: { f: 0 }, kneeL: 0, legR: { f: 10 }, kneeR: 50, armL: { f: 0, s: 8 }, armR: { f: 0, s: 8 } };
+const mirrorD = d => { const o = {}; for (const [k, v] of Object.entries(d)) o[k.replace(/L$/, '#').replace(/R$/, 'L').replace(/#$/, 'R')] = v; return o; };
+const PS = {
+  guard: { ja: 'ガード（構え）', keys: [{ b: GUARD, hold: 3 }] },
+  walk: { ja: '歩く', keys: [{ b: NEUTRAL, d: WALK1 }, { b: NEUTRAL, d: WALK2, adv: 0.11 }, { b: NEUTRAL, d: mirrorD(WALK1), adv: 0.11 }, { b: NEUTRAL, d: mirrorD(WALK2), adv: 0.11 }] },
+  crouch: { ja: 'しゃがむ', keys: [{ b: GUARD }, { b: GUARD, d: { legL: { f: 80, s: 12 }, kneeL: 130, legR: { f: 60, s: 12 }, kneeR: 135, spine: { f: 25 }, head: { f: -15 } }, hold: 2 }] },
+  jump: { ja: 'ジャンプ', keys: [{ b: NEUTRAL, d: { legL: { f: 45 }, kneeL: 85, legR: { f: 45 }, kneeR: 85, spine: { f: 20 }, armL: { f: -30 }, armR: { f: -30 } } },
+    { b: NEUTRAL, d: { lift: 0.3, legL: { f: 35 }, kneeL: 70, legR: { f: 25 }, kneeR: 60, armL: { f: 160, s: 20 }, armR: { f: 160, s: 20 } }, hold: 2 },
+    { b: NEUTRAL, d: { legL: { f: 40 }, kneeL: 75, legR: { f: 40 }, kneeR: 75, spine: { f: 20 }, armL: { f: 30 }, armR: { f: 30 } } }, { b: NEUTRAL }] },
+  jab: { ja: 'ジャブ（左手のパンチ）', keys: [{ b: GUARD }, { b: GUARD, d: { armL: { f: 90, s: 5 }, elbowL: 0, body: { t: -35 }, spine: { f: 5, t: -10 }, head: { t: 38 } }, hold: 2 }, { b: GUARD }] },
+  straight: { ja: 'ストレート（右手のパンチ）', keys: [{ b: GUARD }, { b: GUARD, d: { armR: { f: 88, s: 3 }, elbowR: 0, body: { t: 5 }, spine: { f: 8, t: 25 }, head: { t: -10 }, legR: { f: -15, s: 6 }, kneeR: 30 }, hold: 2, adv: 0.03 }, { b: GUARD }] },
+  frontKick: { ja: '前足キック（左足）', keys: [{ b: GUARD }, { b: GUARD, d: { legL: { f: 95, s: 6 }, kneeL: 110 } }, { b: GUARD, d: { legL: { f: 95, s: 6 }, kneeL: 5, spine: { f: -15 } }, hold: 2 }, { b: GUARD }] },
+  backKick: { ja: '後ろ足キック（右足）', keys: [{ b: GUARD }, { b: GUARD, d: { legR: { f: 95, s: 6 }, kneeR: 110, body: { t: 10 } } }, { b: GUARD, d: { legR: { f: 95, s: 6 }, kneeR: 5, body: { t: 15 }, spine: { f: -15 } }, hold: 2 }, { b: GUARD }] },
+  fall: { ja: '倒れる', keys: [{ b: GUARD }, { b: GUARD, d: { body: { f: -20, t: -10 }, spine: { f: -15 }, armL: { f: 120 }, elbowL: 20, armR: { f: 110 }, elbowR: 20, kneeL: 25, kneeR: 25 }, adv: -0.05 },
+    { b: NEUTRAL, d: { body: { f: -55 }, armL: { f: 100, s: 30 }, armR: { f: 100, s: 30 }, legL: { f: 30 }, kneeL: 40, legR: { f: 20 }, kneeR: 30 }, adv: -0.12 },
+    { b: NEUTRAL, d: { body: { f: -90 }, head: { f: 15 }, armL: { s: 60 }, armR: { s: 60 }, legL: { f: 5 }, kneeL: 10, legR: { f: 8 }, kneeR: 15 }, hold: 3, adv: -0.15 }] },
+};
+for (const [k, v] of Object.entries(PS)) { const o = document.createElement('option'); o.value = k; o.textContent = v.ja; $('psName').appendChild(o); }
+$('psBtn').onclick = () => {
+  const P = PS[$('psName').value], yaw = +$('psDir').value, x0 = curF().pose.x || 0; let adv = 0;
+  const fr = P.keys.map(k => { adv += k.adv || 0; const p = mergePose(k.b(), k.d); p.yaw = yaw; p.x = x0 + Math.sin(R(yaw)) * adv; const f = newFrame(p); f.hold = k.hold || 1; return f; });
+  const list = $('psIb').checked ? fr.flatMap((f, i) => i < fr.length - 1 ? [f, newFrame(lerpPose(f.pose, fr[i + 1].pose, 0.5))] : [f]) : fr;
+  pushUndo();
+  if ($('psMode').value === 'append') { S.frames.push(...list); S.fi = S.frames.length - list.length; }
+  else { S.frames.splice(S.fi, 1, ...list); }
+  save(); renderP2();
+};
+// 中割り
+const EASE = { linear: t => t, smooth: t => t * t * (3 - 2 * t), in: t => t * t, out: t => 1 - (1 - t) * (1 - t) };
+function lerpPose(A, B, t) {
+  const o = {};
+  for (const k of new Set([...Object.keys(A), ...Object.keys(B)])) {
+    const a = A[k], b = B[k];
+    if (a && typeof a === 'object' || b && typeof b === 'object') { o[k] = lerpPose(a || {}, b || {}, t); continue; }
+    if (k === 'yaw') { let d = normYaw((b || 0) - (a || 0)); if (d > 180) d -= 360; o[k] = normYaw((a || 0) + d * t); continue; }
+    o[k] = (a || 0) + ((b || 0) - (a || 0)) * t;
+  }
+  return o;
+}
+let ibMode = 'add';
+function setIbMode(m) { ibMode = m; $('ibModeAdd').classList.toggle('on', m === 'add'); $('ibModeFix').classList.toggle('on', m === 'fix'); $('ibAddRow').hidden = m !== 'add'; $('ibFixRow').hidden = m !== 'fix'; renderIb(); }
+$('ibModeAdd').onclick = () => setIbMode('add'); $('ibModeFix').onclick = () => setIbMode('fix');
+$('tabPs').onclick = () => { $('tabPs').classList.add('on'); $('tabIb').classList.remove('on'); $('psPane').hidden = false; $('ibPane').hidden = true; };
+$('tabIb').onclick = () => { $('tabIb').classList.add('on'); $('tabPs').classList.remove('on'); $('psPane').hidden = true; $('ibPane').hidden = false; renderIb(); };
+function renderIb() {
+  const n = S.frames.length - 1 - S.fi, sel = $('ibTo'), old = sel.value; sel.innerHTML = '';
+  for (let k = 2; k <= n; k++) { const o = document.createElement('option'); o.value = k; o.textContent = k; sel.appendChild(o); }
+  if (old && +old <= n) sel.value = old;
+  $('ibNote').textContent = ibMode === 'add' ? (n < 1 ? '最後のコマです。次のコマを作ってから使ってください。' : `${S.fi + 1}コマ目と${S.fi + 2}コマ目の間に入れます。`)
+    : (n < 2 ? '2枚以上うしろにコマがあるときに使えます。' : `${S.fi + 1}コマ目と${S.fi + 1 + (+sel.value || 2)}コマ目の間のコマを、なめらかにつながるように作り直します。`);
+  $('ibBtn').disabled = ibMode === 'add' ? n < 1 : n < 2;
+}
+$('ibTo').onchange = renderIb;
+$('ibBtn').onclick = () => {
+  const ease = EASE[$('ibEase').value], A = curF().pose; pushUndo();
+  if (ibMode === 'add') {
+    const B = S.frames[S.fi + 1].pose, n = +$('ibN').value, ins = [];
+    for (let k = 1; k <= n; k++) ins.push(newFrame(lerpPose(A, B, ease(k / (n + 1)))));
+    S.frames.splice(S.fi + 1, 0, ...ins);
+  } else {
+    const k = +$('ibTo').value, B = S.frames[S.fi + k].pose;
+    for (let j = 1; j < k; j++) S.frames[S.fi + j].pose = lerpPose(A, B, ease(j / k));
+  }
+  save(); renderP2();
+};
+// 再生（コマ作成の画面）
+let playT2 = 0;
+function playOrder() { const o = []; S.frames.forEach((f, i) => { for (let h = 0; h < (f.hold || 1); h++) o.push(i); }); if ($('pingpong').checked && S.frames.length > 2) for (let i = S.frames.length - 2; i >= 1; i--) for (let h = 0; h < (S.frames[i].hold || 1); h++) o.push(i); return o; }
+function stopPlay2() { clearInterval(playT2); playT2 = 0; $('play2').textContent = '▶ 再生'; drawStage(); }
+$('play2').onclick = () => {
+  if (playT2) return stopPlay2();
+  const ord = playOrder(); let n = 0; $('play2').textContent = '■ 止める';
+  const tick = () => drawStage(S.frames[ord[n++ % ord.length]].pose);
+  tick(); playT2 = setInterval(tick, 1000 / +$('fps').value);
+};
+$('fps').oninput = () => { $('fpsVal').textContent = $('fps').value + ' コマ/秒'; S.fps = +$('fps').value; save(); if (playT2) { stopPlay2(); $('play2').click(); } };
+$('toGen').onclick = () => show('3');
+function renderP2() {
+  if (playT2) stopPlay2();
+  if (!S.frames.length) S.frames = [newFrame()];
+  S.fi = Math.max(0, Math.min(S.fi, S.frames.length - 1));
+  const f = curF(); $('frTitle').textContent = `${S.fi + 1}コマ目${S.fi === 0 ? '' : ''}`; $('holdV').textContent = f.hold;
+  $('zVal').textContent = Math.round(zoom * 100) + '%'; $('fps').value = S.fps || 8; $('fpsVal').textContent = $('fps').value + ' コマ/秒';
+  renderChips(); renderGauges(); drawStage(); renderStrip(); renderIb();
+}
+
+// ---------- 工程3 画像生成 ----------
 async function bboxOfMannequin(cv) {
   const { width: w, height: h } = cv, d = cv.getContext('2d').getImageData(0, 0, w, h).data; let x0 = w, x1 = 0, y0 = h, y1 = 0;
   for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) { const k = (y * w + x) * 4; if (d[k] < 200 || d[k + 1] < 200 || d[k + 2] < 200) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } }
   return { x0, x1, y0, y1 };
 }
 // 生成画像を人形の身長と足元に合わせる置き方（コマ間で跳ねないように）
-async function fitFor(i, url) {
-  const cv = man.canvas(i), m = await bboxOfMannequin(cv), k = chromaKey(await loadImage(url)), b = contentBBox(k);
+async function fitFor(f, url) {
+  const cv = manCanvas(f), m = await bboxOfMannequin(cv), k = chromaKey(await loadImage(url)), b = contentBBox(k);
   if (!b) return null;
   const sx = cv.width / k.width, sy = cv.height / k.height, gb = { x0: b.x0 * sx, x1: b.x1 * sx, y0: b.y0 * sy, y1: b.y1 * sy };
   const s = (m.y1 - m.y0) / (gb.y1 - gb.y0); if (!(s > 0.5 && s < 2)) return null;
   const w = cv.width * s, h = cv.height * s, x = (m.x0 + m.x1) / 2 - ((gb.x0 + gb.x1) / 2) * s, y = m.y1 - gb.y1 * s;
   return { x, y, w, h };
 }
-function framePrompt(i, views, withPrev, fix) {
+function framePrompt(f, views, withPrev, fix) {
   const lines = [
     'Draw the character from the reference images in the exact pose of the 3D pose mannequin in IMAGE 1. This is one frame of an animation.',
     'IMAGE 1 is a pose mannequin, NOT the character. Red limbs are the character\'s RIGHT arm and leg, blue limbs are the LEFT arm and leg; the dots on the head show where the face points.',
@@ -762,7 +1109,7 @@ function framePrompt(i, views, withPrev, fix) {
   lines.push(`IMAGE ${n++}: the full turnaround sheet (front / facing right / back / facing left) for the overall design.`);
   if (withPrev) lines.push(`IMAGE ${n++}: the previous frame of this animation. Keep colors and details consistent with it, but do NOT copy its pose.`);
   if (fix) lines.push(`IMAGE ${n++}: the previous attempt for THIS frame. Keep what is good and apply this correction: ${fix}`);
-  lines.push('', 'Pose description:', describePose(i), '',
+  lines.push('', 'Pose description:', describePose(f.pose), '',
     'Output rules: same art style, line weight and coloring as the references; full body visible; the background must be plain flat pure green (#00FF00) from edge to edge (not the color of any reference background); no floor, no cast shadow, no text, no mannequin.');
   return lines.join('\n');
 }
@@ -772,49 +1119,55 @@ function sheetOverview() {
 }
 let abort = null;
 async function genFrame(i, fix) {
-  const f = S.frames[i], views = viewsFor(f.yaw), prevI = [...Array(i).keys()].reverse().find(j => S.frames[j].cur >= 0);
+  const f = S.frames[i], views = viewsFor(f.pose.yaw), prevI = [...Array(i).keys()].reverse().find(j => S.frames[j].cur >= 0);
   const withPrev = $('usePrev').checked && prevI !== undefined, cur = f.vers[f.cur];
-  const parts = [framePrompt(i, views, withPrev, fix ? fix : ''), partOf(man.canvas(i)), ...views.map(k => partOf(S.sheet.views[k])), partOf(await sheetOverview())];
+  const parts = [framePrompt(f, views, withPrev, fix || ''), partOf(manCanvas(f)), ...views.map(k => partOf(S.sheet.views[k])), partOf(await sheetOverview())];
   if (withPrev) parts.push(partOf(fitCanvas(await loadImage(S.frames[prevI].vers[S.frames[prevI].cur].url), 1024)));
   if (fix && cur) parts.push(partOf(fitCanvas(await loadImage(cur.url), 1024)));
   const url = await callGemini(parts, settings().aspect, abort?.signal);
-  const fit = await fitFor(i, url);
-  f.vers.push({ id: uid(), url, fit, sheet: S.sheet.id, yaw: f.yaw, aspect: settings().aspect, fix: fix || '' }); f.cur = f.vers.length - 1; save();
+  const fit = await fitFor(f, url);
+  f.vers.push({ id: uid(), url, fit, sheet: S.sheet.id, sig: sigOf(f), fix: fix || '' }); f.cur = f.vers.length - 1; save();
 }
 function needSheet() {
   if (!S.sheet.ok || VIEWS.some(v => !S.sheet.views[v.k])) { setState('fState', '先に「1 三面図」で三面図を確定してください', 'err'); return true; }
   return false;
 }
+const GEN_BTNS = ['fGen', 'fAll', 'fRedo', 'fFixBtn', 'fSwap'];
 async function runFrames(list, fix) {
-  if (needSheet()) return;
-  abort = new AbortController(); $('fStop').hidden = false; ['fGen', 'fAll', 'fFixBtn', 'fSwap'].forEach(id => $(id).disabled = true); busy(1);
+  if (needSheet() || !list.length) { if (!list.length) setState('fState', '生成するコマはありません（すべて生成済みです）', 'ok'); return; }
+  abort = new AbortController(); $('fStop').hidden = false; GEN_BTNS.forEach(id => $(id).disabled = true); busy(1);
   let done = 0, err = null;
   for (const i of list) {
     if (abort.signal.aborted) break;
-    setState('fState', `${PRESETS[i].ja}を生成しています…（${done + 1} / ${list.length}）`); S.fi = i; renderP2();
+    setState('fState', `${i + 1}コマ目を生成しています…（${done + 1} / ${list.length}）`); S.fi = i; renderP3();
     try { await genFrame(i, fix); done++; } catch (e) { if (e.name === 'AbortError') break; err = e; }
-    renderP2();
+    renderP3();
   }
-  busy(-1); $('fStop').hidden = true; ['fGen', 'fAll', 'fFixBtn', 'fSwap'].forEach(id => $(id).disabled = false); abort = null;
-  setState('fState', err ? `失敗：${err.message}` : `${done}枚できました。`, err ? 'err' : 'ok'); renderP2();
+  busy(-1); $('fStop').hidden = true; GEN_BTNS.forEach(id => $(id).disabled = false); abort = null;
+  setState('fState', err ? `失敗：${err.message}` : `${done}枚できました。`, err ? 'err' : 'ok'); renderP3();
 }
+const isStale = f => { const v = f.vers[f.cur]; return v && (v.sig !== sigOf(f) || v.sheet !== S.sheet.id); };
 $('fGen').onclick = () => runFrames([S.fi]);
-$('fAll').onclick = () => runFrames(PRESETS.map((_, i) => i));
+$('fAll').onclick = () => runFrames(S.frames.map((f, i) => (f.cur < 0 || isStale(f)) ? i : -1).filter(i => i >= 0));
+$('fRedo').onclick = () => { if (confirm(`全${S.frames.length}コマを作り直しますか？（今の版も残ります）`)) runFrames(S.frames.map((_, i) => i)); };
 $('fStop').onclick = () => abort?.abort();
-$('fFixBtn').onclick = () => { const fix = $('fFix').value.trim(); if (!fix) return setState('fState', '直したいことを書いてください', 'err'); if (S.frames[S.fi].cur < 0) return setState('fState', '先に一度生成してください', 'err'); $('fFix').value = ''; runFrames([S.fi], fix); };
-$('fSwap').onclick = () => { if (S.frames[S.fi].cur < 0) return setState('fState', '先に一度生成してください', 'err'); runFrames([S.fi], 'The previous attempt MIXED UP LEFT AND RIGHT limbs. Check every arm and leg against the mannequin colors (red = character\'s right, blue = character\'s left) and against the "How it looks IN THE PICTURE" list, and fix which arm/leg is doing what. Keep the same overall pose and camera angle.'); };
-$('vPrev').onclick = () => { const f = S.frames[S.fi]; if (f.cur > 0) { f.cur--; save(); renderP2(); } };
-$('vNext').onclick = () => { const f = S.frames[S.fi]; if (f.cur < f.vers.length - 1) { f.cur++; save(); renderP2(); } };
-$('vDrop').onclick = () => { const f = S.frames[S.fi]; if (f.cur < 0) return; f.vers.splice(f.cur, 1); f.cur = Math.min(f.cur, f.vers.length - 1); save(); renderP2(); };
-$('yaw').oninput = () => { S.frames[S.fi].yaw = +$('yaw').value; save(); renderP2(); };
-$('viewMode').onchange = () => renderP2();
+$('fFixBtn').onclick = () => { const fix = $('fFix').value.trim(); if (!fix) return setState('fState', '直したいことを書いてください', 'err'); if (curF().cur < 0) return setState('fState', '先に一度生成してください', 'err'); $('fFix').value = ''; runFrames([S.fi], fix); };
+$('fSwap').onclick = () => { if (curF().cur < 0) return setState('fState', '先に一度生成してください', 'err'); runFrames([S.fi], 'The previous attempt MIXED UP LEFT AND RIGHT limbs. Check every arm and leg against the mannequin colors (red = character\'s right, blue = character\'s left) and against the "How it looks IN THE PICTURE" list, and fix which arm/leg is doing what. Keep the same overall pose and camera angle.'); };
+$('vPrev').onclick = () => { const f = curF(); if (f.cur > 0) { f.cur--; save(); renderP3(); } };
+$('vNext').onclick = () => { const f = curF(); if (f.cur < f.vers.length - 1) { f.cur++; save(); renderP3(); } };
+$('vDrop').onclick = () => { const f = curF(); if (f.cur < 0) return; f.vers.splice(f.cur, 1); f.cur = Math.min(f.cur, f.vers.length - 1); save(); renderP3(); };
+$('toPose').onclick = () => show('2');
+$('viewMode').onchange = () => renderP3();
 const keyedCache = new Map();
-async function keyedOf(url) { let k = keyedCache.get(url); if (!k) { k = chromaKey(await loadImage(url)); keyedCache.set(url, k); if (keyedCache.size > 30) keyedCache.delete(keyedCache.keys().next().value); } return k; }
+async function keyedOf(url) { let k = keyedCache.get(url); if (!k) { k = chromaKey(await loadImage(url)); keyedCache.set(url, k); if (keyedCache.size > 40) keyedCache.delete(keyedCache.keys().next().value); } return k; }
 async function drawGen(cv, i, mode) {
-  const f = S.frames[i], v = f.vers[f.cur], mc = man.canvas(i); cv.width = mc.width; cv.height = mc.height; const g = cv.getContext('2d');
+  const f = S.frames[i], v = f.vers[f.cur], mc = manCanvas(f); cv.width = mc.width; cv.height = mc.height; const g = cv.getContext('2d');
   if (mode === 'over' || mode === 'play') { g.fillStyle = '#ffffff'; g.fillRect(0, 0, cv.width, cv.height); }
   else { g.fillStyle = '#2a2e37'; g.fillRect(0, 0, cv.width, cv.height); }
-  if (!v) { g.fillStyle = '#9a9fab'; g.font = `${cv.width / 24}px sans-serif`; g.textAlign = 'center'; g.fillText('まだ生成していません', cv.width / 2, cv.height / 2); if (mode === 'over') { g.globalAlpha = 0.5; g.drawImage(mc, 0, 0); g.globalAlpha = 1; } return; }
+  if (!v) {
+    if (mode === 'play') { g.drawImage(mc, 0, 0); return; }
+    g.fillStyle = '#9a9fab'; g.font = `${cv.width / 24}px sans-serif`; g.textAlign = 'center'; g.fillText('まだ生成していません', cv.width / 2, cv.height / 2); if (mode === 'over') { g.globalAlpha = 0.5; g.drawImage(mc, 0, 0); g.globalAlpha = 1; } return;
+  }
   if (mode === 'side' || mode === 'gen') { const im = await loadImage(v.url); g.drawImage(im, 0, 0, cv.width, cv.height); return; }
   const k = await keyedOf(v.url), b = v.fit || { x: 0, y: 0, w: cv.width, h: cv.height };
   g.drawImage(k, b.x, b.y, b.w, b.h);
@@ -822,45 +1175,70 @@ async function drawGen(cv, i, mode) {
 }
 let playT = 0;
 $('play').onclick = () => {
-  if (playT) { clearInterval(playT); playT = 0; $('play').textContent = '▶ 通して見る'; renderP2(); return; }
-  const idx = S.frames.map((f, i) => f.cur >= 0 ? i : -1).filter(i => i >= 0); if (idx.length < 2) return setState('fState', '2枚以上生成すると通して見られます', 'warn');
-  let n = 0; $('play').textContent = '■ 止める'; $('pair').className = 'pair one'; $('manBox').hidden = true;
-  playT = setInterval(() => { drawGen($('genCv'), idx[n++ % idx.length], 'play'); }, 500);
+  if (playT) { clearInterval(playT); playT = 0; $('play').textContent = '▶ 通して見る'; renderP3(); return; }
+  if (!S.frames.some(f => f.cur >= 0)) return setState('fState', '生成したコマがあると通して見られます', 'warn');
+  const ord = playOrder(); let n = 0; $('play').textContent = '■ 止める'; $('pair').className = 'pair one'; $('manBox').hidden = true;
+  playT = setInterval(() => { drawGen($('genCv'), ord[n++ % ord.length], 'play'); }, 1000 / (S.fps || 8));
 };
-function renderP2() {
+// スプライトシート（透過 PNG、横一列）
+$('exSheet').onclick = async () => {
+  const [W, H] = frameSize(), c = mkCanvas(W * S.frames.length, H), g = c.getContext('2d');
+  for (let i = 0; i < S.frames.length; i++) {
+    const f = S.frames[i], v = f.vers[f.cur];
+    if (v) { const k = await keyedOf(v.url), b = v.fit || { x: 0, y: 0, w: W, h: H }; g.drawImage(k, i * W + b.x, b.y, b.w, b.h); }
+    else g.drawImage(manCanvas(f), i * W, 0);
+  }
+  c.toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'sprite-sheet.png'; a.click(); }, 'image/png');
+};
+function renderP3() {
   if (playT) return;
+  S.fi = Math.max(0, Math.min(S.fi, S.frames.length - 1));
   const L = $('frameList'); L.innerHTML = '';
-  PRESETS.forEach((p, i) => {
-    const f = S.frames[i], v = f.vers[f.cur], b = document.createElement('button'); b.className = 'fitem' + (i === S.fi ? ' on' : '');
-    const stale = v && v.sheet !== S.sheet.id;
-    b.innerHTML = `<span></span><span>${i + 1}. ${p.ja}<small>${facingJa(f.yaw)}${v ? ` ・ ${f.vers.length}版` : ''}${stale ? ' ・ 要更新' : ''}</small></span>`;
-    const th = v ? Object.assign(new Image(), { src: v.url }) : (() => { const c = mkCanvas(112, 112), mc = man.canvas(i); const s = Math.min(112 / mc.width, 112 / mc.height); c.getContext('2d').fillStyle = '#fff'; c.getContext('2d').fillRect(0, 0, 112, 112); c.getContext('2d').drawImage(mc, (112 - mc.width * s) / 2, (112 - mc.height * s) / 2, mc.width * s, mc.height * s); return c; })();
-    b.firstChild.replaceWith(th); b.onclick = () => { S.fi = i; save(); renderP2(); }; L.appendChild(b);
+  S.frames.forEach((f, i) => {
+    const v = f.vers[f.cur], b = document.createElement('button'); b.className = 'fitem' + (i === S.fi ? ' on' : '');
+    b.innerHTML = `<span></span><span>${i + 1}コマ目<small>${facingJa(f.pose.yaw)}${v ? ` ・ ${f.vers.length}版` : ' ・ 未生成'}${isStale(f) ? ' ・ 要再生成' : ''}</small></span>`;
+    const th = v ? Object.assign(new Image(), { src: v.url }) : (() => { const c = thumbCanvas(f).cloneNode(); c.getContext('2d').drawImage(thumbCanvas(f), 0, 0); return c; })();
+    b.firstChild.replaceWith(th); b.onclick = () => { S.fi = i; save(); renderP3(); }; L.appendChild(b);
   });
-  const i = S.fi, f = S.frames[i], mode = $('viewMode').value;
-  $('yaw').value = f.yaw; $('yawLbl').textContent = `${f.yaw}°（${facingJa(f.yaw)}）`;
-  $('viewLbl').textContent = '生成のときに渡す三面図：' + viewsFor(f.yaw).map(k => VIEWS.find(v => v.k === k).ja).join('・') + '（＋全体のシート）';
-  const mc = man.canvas(i), cv = $('manCv'); cv.width = mc.width; cv.height = mc.height; cv.getContext('2d').drawImage(mc, 0, 0);
+  L.children[S.fi]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  const f = curF(), mode = $('viewMode').value;
+  $('viewLbl').textContent = `${S.fi + 1}コマ目（${facingJa(f.pose.yaw)}）・生成のときに渡す三面図：` + viewsFor(f.pose.yaw).map(k => VIEWS.find(v => v.k === k).ja).join('・') + '（＋全体のシート）';
+  const mc = manCanvas(f), cv = $('manCv'); cv.width = mc.width; cv.height = mc.height; cv.getContext('2d').drawImage(mc, 0, 0);
   $('pair').className = 'pair' + (mode === 'side' ? '' : ' one'); $('manBox').hidden = mode !== 'side';
-  drawGen($('genCv'), i, mode);
-  $('vNum').textContent = f.vers.length ? `（${f.cur + 1} / ${f.vers.length}版${f.vers[f.cur]?.fix ? '・修正：' + (/^The previous attempt MIXED/.test(f.vers[f.cur].fix) ? '左右を直す' : f.vers[f.cur].fix) : ''}）` : '';
+  drawGen($('genCv'), S.fi, mode);
+  const v = f.vers[f.cur];
+  $('vNum').textContent = f.vers.length ? `（${f.cur + 1} / ${f.vers.length}版${v?.fix ? '・修正：' + (/^The previous attempt MIXED/.test(v.fix) ? '左右を直す' : v.fix) : ''}${isStale(f) ? '・ポーズか三面図が変わったので要再生成' : ''}）` : '';
   $('vPrev').disabled = f.cur <= 0; $('vNext').disabled = f.cur >= f.vers.length - 1; $('vDrop').disabled = f.cur < 0;
-  $('descPre').textContent = describePose(i);
-  if (!$('fState').textContent && (!S.sheet.ok)) setState('fState', '先に「1 三面図」で三面図を確定してください。', 'warn');
+  $('descPre').textContent = describePose(f.pose);
+  if (!$('fState').textContent && !S.sheet.ok) setState('fState', '先に「1 三面図」で三面図を確定してください。', 'warn');
 }
 
 // ---------- データ ----------
 $('saveProj').onclick = () => {
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S)], { type: 'application/json' })); a.download = 'stick-animator-v2.json'; a.click();
 };
-$('openProj').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; try { const o = JSON.parse(await f.text()); if (o.v !== 2) throw 0; S = Object.assign(freshState(), o); man.clear(); save(); show('0'); } catch { alert('v2 のファイルではありません'); } };
-$('resetAll').onclick = () => { if (!confirm('立ち絵・三面図・生成した絵をすべて消して、最初からやり直しますか？')) return; S = freshState(); man.clear(); save(); ['standState', 'sheetState', 'fState'].forEach(id => setState(id, '')); show('0'); };
+$('openProj').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; try { const o = JSON.parse(await f.text()); if (o.v !== 2) throw 0; S = Object.assign(freshState(), o); fixState(); save(); show('0'); } catch { alert('v2 のファイルではありません'); } };
+$('resetAll').onclick = () => { if (!confirm('立ち絵・三面図・生成した絵をすべて消して、最初からやり直しますか？')) return; S = freshState(); fixState(); save(); ['standState', 'sheetState', 'fState'].forEach(id => setState(id, '')); show('0'); };
 
-window.__dev = { get S() { return S; }, renderP2, solvePose, describePose, viewsFor, splitSheet, man };
+// 検証版（5ポーズ固定）のデータを新しいコマ形式に直す
+function fixState() {
+  const OLD = { stand: { yaw: 0, d: {} }, walk: { d: { legR: { f: 28 }, kneeR: 8, legL: { f: -18 }, kneeL: 28, armR: { f: -25, s: 8 }, elbowR: 15, armL: { f: 25, s: 8 }, elbowL: 25, spine: { t: 5 } } },
+    punch: { d: { spine: { t: 25, f: 5 }, armR: { f: 88, s: 4 }, elbowR: 3, armL: { f: 55, s: 18 }, elbowL: 120, legL: { f: 24 }, kneeL: 18, legR: { f: -22, s: 4 }, kneeR: 8 } },
+    kick: { d: { legR: { f: 85 }, kneeR: 10, legL: { f: -6 }, kneeL: 15, spine: { f: -12 }, armR: { f: 30, s: 20 }, elbowR: 100, armL: { f: 50, s: 15 }, elbowL: 110 } },
+    crouch: { d: { legL: { f: 75, s: 14 }, kneeL: 125, legR: { f: 75, s: 14 }, kneeR: 125, spine: { f: 35 }, head: { f: -25 }, armL: { f: 50, s: 10 }, elbowL: 60, armR: { f: 50, s: 10 }, elbowR: 60 } } };
+  S.frames = (S.frames || []).map(f => {
+    if (f.pose) return Object.assign({ id: uid(), hold: 1, vers: [], cur: -1 }, f);
+    const o = OLD[f.k], p = mergePose(DEF_POSE(), o ? o.d : {}); p.yaw = f.yaw || 0;
+    return { id: uid(), pose: p, hold: 1, vers: f.vers || [], cur: f.cur ?? -1 };
+  });
+  if (!S.frames.length) S.frames = [newFrame()];
+}
+const setHH = () => document.documentElement.style.setProperty('--hh', document.querySelector('header').offsetHeight + 'px'); addEventListener('resize', setHH); setHH();
+window.__dev = { get S() { return S; }, renderP2, renderP3, solvePose, describePose, viewsFor, splitSheet, lerpPose, PS };
 (async () => {
   loadSettings();
   try { const s = await DB.get('cur'); if (s && !/[?&]fresh/.test(location.search)) S = Object.assign(freshState(), JSON.parse(s)); } catch {}
-  show(S.stand ? (S.sheet.ok ? '2' : '1') : '0');
+  fixState(); show(S.stand ? (S.sheet.ok ? '2' : '1') : '0');
 })();
 </script>
 </body>
