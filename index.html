@@ -275,7 +275,8 @@
           <h2>まとめて生成</h2>
           <div class="row"><button id="genAll" style="flex:1">未生成のコマを生成</button><button id="genStop" class="small" disabled>停止</button></div>
           <button id="genRedoAll" class="small" style="width:100%;margin-top:6px">全コマ作り直し</button>
-          <label class="check"><input type="checkbox" id="genChain" checked>前のコマの生成画像も参考にする</label>
+          <label class="check"><input type="checkbox" id="genChain">前のコマの生成画像も参考にする</label>
+          <label class="check"><input type="checkbox" id="genAlign" checked>生成画像の位置と大きさを原画に合わせる</label>
           <p id="genGlobal" class="note"></p>
         </section>
         <section class="box">
@@ -1273,14 +1274,40 @@ function rulesText(i, green) {
   ].filter(Boolean).join('\n');
 }
 async function buildGenParts(i, box, green) {
+  // 切り絵をそのまま土台にして、継ぎ目だけを直してもらう（描き直させない）
   const parts = [], prev = $('genChain').checked ? (() => { for (let j = i - 1; j >= 1; j--) { const v = curVer(j); if (v) return { v, j }; } return null; })() : null;
-  let t = `You are finishing FRAME ${i + 1} of ${S.frames.length} of a 2D fighting game sprite animation.\n` +
-    `IMAGE 1 is a rough CUT-OUT PUPPET render of this frame: the character's parts were cut from the reference and rotated at the joints, so there are gaps or overlaps at joints, missing hidden areas and stretched shapes. Its POSE, limb angles, body position inside the canvas, size and ground line are EXACTLY what we want.\n` +
-    `IMAGE 2 is the original character reference (standing pose).\n`;
+  let t = `EDIT IMAGE 1. This is a SEAM-REPAIR task, not a new drawing.\n` +
+    `IMAGE 1 is frame ${i + 1} of a 2D fighting game sprite animation, made by cutting the character in IMAGE 2 into parts and rotating them at the joints. The pose, limb angles, camera, zoom, crop, position and size in IMAGE 1 are final and must not change.\n` +
+    `IMAGE 2 is the same character in a standing pose. Use it ONLY to see what hidden or missing parts look like (colors, costume details). Never copy its pose.\n`;
   parts.push(partOf(renderPuppetBox(i, box, green)), partOf(standRef(green)));
-  if (prev) { parts.push(partOf(S.gen[prev.v.id])); t += `IMAGE 3 is the already finished frame ${prev.j + 1} of the same animation. Match its line quality, colors and rendering.\n`; }
-  t += `\nTASK: Redraw IMAGE 1 as a clean, finished illustration of the character. Keep exactly the same pose, the same position and scale in the canvas, and the same framing as IMAGE 1. Repair the joints, fill in parts that were hidden in the reference, and make clothes, hair, wings and accessories fall naturally for this pose.\n\nRULES:\n${rulesText(i, green)}`;
+  if (prev) { parts.push(partOf(S.gen[prev.v.id])); t += `IMAGE 3 is the repaired previous frame, for color and line consistency only. Never copy its pose.\n`; }
+  t += `\nMake the SMALLEST possible changes to IMAGE 1:\n` +
+    `- Connect body parts that are separated or have gaps at the joints (neck, shoulders, elbows, wrists, waist, hips, knees, ankles) so the limbs look continuous.\n` +
+    `- Smooth hard edges where cut parts overlap, and remove small slivers or broken fragments left over from the cutting.\n` +
+    `- Fill small missing areas so the costume continues naturally, matching IMAGE 2.\n` +
+    `Do NOT: change the pose or any limb angle, redraw the character from scratch, turn it back into the standing pose, move, rotate, zoom or crop the character, or remove or relocate the wings, cape, hair, headdress or other accessories. Everything that is not a seam must stay exactly as it is in IMAGE 1, so the result lines up with IMAGE 1 when laid on top of it.\n` +
+    `\nRULES:\n${rulesText(i, green)}`;
   parts.unshift(t); parts.aspect = box.aspect; return parts;
+}
+// 生成結果のキャラの位置と大きさを、原画（切り絵）に合わせる（グリーンバック時）
+function contentBBox(c) {
+  const { width: w, height: h } = c, d = c.getContext('2d').getImageData(0, 0, w, h).data; let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) if (d[(y * w + x) * 4 + 3] > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  return x1 < 0 ? null : { x0, y0, x1, y1 };
+}
+async function alignBox(i, url, box) {
+  if (!$('genAlign').checked || !$('genGreen').checked) return box;
+  try {
+    const im = await loadImage(url), keyed = chromaKey(im), gb = contentBBox(keyed);
+    const pc = renderPuppetBox(i, box, false, 768), pb = contentBBox(pc);
+    if (!gb || !pb) return box;
+    const ps = box.w / pc.width;   // 原画キャンバス1pxあたりの画像座標
+    const P = { x0: box.x + pb.x0 * ps, x1: box.x + pb.x1 * ps, y0: box.y + pb.y0 * ps, y1: box.y + pb.y1 * ps };
+    const k = (P.y1 - P.y0) / Math.max(1, gb.y1 - gb.y0), k0 = box.w / keyed.width;
+    if (!(k > k0 * 0.5 && k < k0 * 2)) return box;   // 極端な結果は合わせない
+    const W = keyed.width * k, H = keyed.height * k;
+    return { x: (P.x0 + P.x1) / 2 - ((gb.x0 + gb.x1) / 2) * k, y: P.y1 - gb.y1 * k, w: W, h: H, aspect: box.aspect };
+  } catch { return box; }
 }
 async function buildFixParts(i, v, fix, green) {
   const t = `EDIT this finished sprite frame. IMAGE 1 is the current frame ${i + 1}. IMAGE 2 is the character reference; keep the character identical to it.\n` +
@@ -1298,10 +1325,11 @@ async function runGen(i, mode, signal) {
     const parts = mode === 'fix' ? await buildFixParts(i, v0, fix, green) : await buildGenParts(i, box, green);
     const url = await callGemini(parts, signal);
     const id = newGenId(); S.gen[id] = url;
+    const outBox = mode === 'fix' ? box : await alignBox(i, url, box);
     const fr = S.frames.indexOf(f) >= 0 ? f : null; if (!fr) return false;   // 生成中にコマが消された
     pushUndo();
     fr.ai = fr.ai || { v: [], cur: -1 };
-    fr.ai.v = fr.ai.v.slice(0, fr.ai.cur + 1); fr.ai.v.push({ id, box: { x: box.x, y: box.y, w: box.w, h: box.h, aspect: box.aspect }, sig: mode === 'fix' ? v0.sig : sig }); fr.ai.cur = fr.ai.v.length - 1;
+    fr.ai.v = fr.ai.v.slice(0, fr.ai.cur + 1); fr.ai.v.push({ id, box: { x: outBox.x, y: outBox.y, w: outBox.w, h: outBox.h, aspect: box.aspect }, sig: mode === 'fix' ? v0.sig : sig }); fr.ai.cur = fr.ai.v.length - 1;
     if (mode === 'fix') $('genFix').value = '';
     thumbDirty(S.frames.indexOf(fr)); afterChange();
     return true;
@@ -1536,7 +1564,7 @@ function encodeLabels() {
   const { w, h } = S.img, c = mkCanvas(w, h), g = c.getContext('2d'), id = new ImageData(w, h);
   for (let i = 0; i < w * h; i++) { id.data[i * 4] = S.labels[i]; id.data[i * 4 + 3] = 255; } g.putImageData(id, 0, 0); return c.toDataURL('image/png');
 }
-window.__dev = { curVer, genStale, drawPuppetExt: (g, p) => drawPuppet(g, p), PRESETS, poseFromSpec, get view() { return view; }, ik, setDir, zeroPose, newFrame, S, encodeLabels, segment, buildParts, solve, refreshAll, fit, draw, projectData, applyProject, loadSample, setStep };
+window.__dev = { curVer, alignBox, genBox, renderPuppetBox, genStale, drawPuppetExt: (g, p) => drawPuppet(g, p), PRESETS, poseFromSpec, get view() { return view; }, ik, setDir, zeroPose, newFrame, S, encodeLabels, segment, buildParts, solve, refreshAll, fit, draw, projectData, applyProject, loadSample, setStep };
 
 // ---------------- 起動 ----------------
 (async () => {
