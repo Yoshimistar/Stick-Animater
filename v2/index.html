@@ -176,6 +176,7 @@
         <div class="row">
           <input type="text" id="fFix" placeholder="直したいこと（例：右腕をもっとまっすぐ前に）">
           <button id="fFixBtn">修正して作り直す</button>
+          <button id="fSwap">左右が逆なので作り直す</button>
         </div>
         <p id="fState" class="state"></p>
         <details><summary>Gemini に送るポーズの説明文</summary><pre id="descPre"></pre></details>
@@ -325,7 +326,7 @@ async function mockGemini(parts, aspect, signal) {
   }
   return c.toDataURL('image/png');
 }
-function chromaKey(src) {
+function chromaKeyGreen(src) {
   const c = mkCanvas(src.naturalWidth || src.width, src.naturalHeight || src.height), g = c.getContext('2d'); g.drawImage(src, 0, 0);
   const d = g.getImageData(0, 0, c.width, c.height), p = d.data;
   for (let k = 0; k < p.length; k += 4) {
@@ -333,6 +334,24 @@ function chromaKey(src) {
     if (diff > 0.3) { p[k + 3] = 0; continue; }
     if (diff > 0.08) { p[k + 3] = Math.round(p[k + 3] * (1 - (diff - 0.08) / 0.22)); p[k + 1] = mx; }
     else if (gg > mx) p[k + 1] = Math.round((gg + mx) / 2);
+  }
+  g.putImageData(d, 0, 0); return c;
+}
+// 背景がグリーンでなかったとき用：外周の色から塗りつぶしで背景を消す
+function chromaKey(src) {
+  const c = mkCanvas(src.naturalWidth || src.width, src.naturalHeight || src.height), g = c.getContext('2d'); g.drawImage(src, 0, 0);
+  const w = c.width, h = c.height, d = g.getImageData(0, 0, w, h), p = d.data, border = [];
+  for (let x = 0; x < w; x += 4) border.push(x, (h - 1) * w + x);
+  for (let y = 0; y < h; y += 4) border.push(y * w, y * w + w - 1);
+  const green = border.filter(k => p[k * 4 + 1] - Math.max(p[k * 4], p[k * 4 + 2]) > 60).length / border.length;
+  if (green > 0.5) return chromaKeyGreen(src);
+  const med = j => border.map(k => p[k * 4 + j]).sort((a, b) => a - b)[border.length >> 1], bg = [med(0), med(1), med(2)];
+  const tol = 42 * 42, far = k => { const r = p[k * 4] - bg[0], gg = p[k * 4 + 1] - bg[1], b = p[k * 4 + 2] - bg[2]; return r * r + gg * gg + b * b > tol; };
+  const seen = new Uint8Array(w * h), st = border.filter(k => !far(k));
+  st.forEach(k => seen[k] = 1);
+  while (st.length) {
+    const k = st.pop(); p[k * 4 + 3] = 0; const x = k % w;
+    for (const n of [x > 0 ? k - 1 : -1, x < w - 1 ? k + 1 : -1, k - w, k + w]) if (n >= 0 && n < w * h && !seen[n]) { seen[n] = 1; if (!far(n)) st.push(n); }
   }
   g.putImageData(d, 0, 0); return c;
 }
@@ -694,8 +713,27 @@ function describePose(i) {
   if ((sp.f || 0) > 15) out.push('Upper body leaning forward.'); else if ((sp.f || 0) < -8) out.push('Upper body leaning slightly back.');
   if (Math.abs(sp.t || 0) > 15) out.push(`Upper body twisted so the ${sp.t > 0 ? 'right' : 'left'} shoulder comes forward.`);
   if (J.pelvis[1] < 0.38) out.push('Crouching low, hips close to the ground.');
+  out.push('', 'How it looks IN THE PICTURE (use this to avoid mixing up left and right):', ...pictureText(i));
   if ((p.lift || 0) > 0) out.push('Airborne: both feet off the ground.'); else out.push('Feet on the ground (same ground line as the mannequin).');
   return out.join('\n');
+}
+
+// 画面上での見え方（手前／奥、絵の右側／左側）で手足を説明する。左右の取り違え対策
+function pictureText(i) {
+  const p = PRESETS[i].p, f = S.frames[i], J = solvePose(p, f.yaw), out = [];
+  const side = (a, b, w) => { const dx = a[0] - b[0]; return Math.abs(dx) < 0.04 ? `in line with its ${w}` : `to the ${dx > 0 ? 'RIGHT' : 'LEFT'} of its ${w} in the picture`; };
+  const height = y => y > J.neck[1] ? 'above the shoulders' : y > J.chest[1] - 0.02 ? 'at chest/shoulder height' : y > J.pelvis[1] - 0.05 ? 'at hip height' : y > 0.12 ? 'below the hips' : 'down at the ground';
+  for (const [kind, a, b, end, label] of [['arm', 'elL', 'elR', 'hd', 'hand'], ['leg', 'knL', 'knR', 'to', 'foot']]) {
+    const nearL = J[a][2] > J[b][2], diff = Math.abs(J[a][2] - J[b][2]) > 0.03;
+    for (const [S_, col, name] of [['R', 'red', 'right'], ['L', 'blue', 'left']]) {
+      const root = kind === 'arm' ? J['sh' + S_] : J['hp' + S_], tip = J[end + S_], near = S_ === 'L' ? nearL : !nearL;
+      out.push(`- The character's ${name.toUpperCase()} ${kind} (${col} in IMAGE 1)${diff ? ` is the ${near ? 'NEARER one (closer to the viewer, drawn in front)' : 'FARTHER one (behind, partly hidden)'}` : ''}; its ${label} is ${side(tip, root, kind === 'arm' ? 'shoulder' : 'hip')}, ${height(tip[1])}.`);
+    }
+  }
+  const a = normYaw(f.yaw);
+  if (a >= 150 && a <= 210) out.push('- The character is seen from behind, so the character\'s right side appears on the RIGHT of the picture.');
+  else if (a <= 30 || a >= 330) out.push('- The character faces the viewer, so the character\'s right side appears on the LEFT of the picture (mirror image).');
+  return out;
 }
 
 // ---------- 工程2 生成 ----------
@@ -725,7 +763,7 @@ function framePrompt(i, views, withPrev, fix) {
   if (withPrev) lines.push(`IMAGE ${n++}: the previous frame of this animation. Keep colors and details consistent with it, but do NOT copy its pose.`);
   if (fix) lines.push(`IMAGE ${n++}: the previous attempt for THIS frame. Keep what is good and apply this correction: ${fix}`);
   lines.push('', 'Pose description:', describePose(i), '',
-    'Output rules: same art style, line weight and coloring as the references; full body visible; plain flat pure green (#00FF00) background; no shadow, no ground, no text, no mannequin.');
+    'Output rules: same art style, line weight and coloring as the references; full body visible; the background must be plain flat pure green (#00FF00) from edge to edge (not the color of any reference background); no floor, no cast shadow, no text, no mannequin.');
   return lines.join('\n');
 }
 function sheetOverview() {
@@ -749,7 +787,7 @@ function needSheet() {
 }
 async function runFrames(list, fix) {
   if (needSheet()) return;
-  abort = new AbortController(); $('fStop').hidden = false; ['fGen', 'fAll', 'fFixBtn'].forEach(id => $(id).disabled = true); busy(1);
+  abort = new AbortController(); $('fStop').hidden = false; ['fGen', 'fAll', 'fFixBtn', 'fSwap'].forEach(id => $(id).disabled = true); busy(1);
   let done = 0, err = null;
   for (const i of list) {
     if (abort.signal.aborted) break;
@@ -757,13 +795,14 @@ async function runFrames(list, fix) {
     try { await genFrame(i, fix); done++; } catch (e) { if (e.name === 'AbortError') break; err = e; }
     renderP2();
   }
-  busy(-1); $('fStop').hidden = true; ['fGen', 'fAll', 'fFixBtn'].forEach(id => $(id).disabled = false); abort = null;
+  busy(-1); $('fStop').hidden = true; ['fGen', 'fAll', 'fFixBtn', 'fSwap'].forEach(id => $(id).disabled = false); abort = null;
   setState('fState', err ? `失敗：${err.message}` : `${done}枚できました。`, err ? 'err' : 'ok'); renderP2();
 }
 $('fGen').onclick = () => runFrames([S.fi]);
 $('fAll').onclick = () => runFrames(PRESETS.map((_, i) => i));
 $('fStop').onclick = () => abort?.abort();
 $('fFixBtn').onclick = () => { const fix = $('fFix').value.trim(); if (!fix) return setState('fState', '直したいことを書いてください', 'err'); if (S.frames[S.fi].cur < 0) return setState('fState', '先に一度生成してください', 'err'); $('fFix').value = ''; runFrames([S.fi], fix); };
+$('fSwap').onclick = () => { if (S.frames[S.fi].cur < 0) return setState('fState', '先に一度生成してください', 'err'); runFrames([S.fi], 'The previous attempt MIXED UP LEFT AND RIGHT limbs. Check every arm and leg against the mannequin colors (red = character\'s right, blue = character\'s left) and against the "How it looks IN THE PICTURE" list, and fix which arm/leg is doing what. Keep the same overall pose and camera angle.'); };
 $('vPrev').onclick = () => { const f = S.frames[S.fi]; if (f.cur > 0) { f.cur--; save(); renderP2(); } };
 $('vNext').onclick = () => { const f = S.frames[S.fi]; if (f.cur < f.vers.length - 1) { f.cur++; save(); renderP2(); } };
 $('vDrop').onclick = () => { const f = S.frames[S.fi]; if (f.cur < 0) return; f.vers.splice(f.cur, 1); f.cur = Math.min(f.cur, f.vers.length - 1); save(); renderP2(); };
@@ -804,7 +843,7 @@ function renderP2() {
   const mc = man.canvas(i), cv = $('manCv'); cv.width = mc.width; cv.height = mc.height; cv.getContext('2d').drawImage(mc, 0, 0);
   $('pair').className = 'pair' + (mode === 'side' ? '' : ' one'); $('manBox').hidden = mode !== 'side';
   drawGen($('genCv'), i, mode);
-  $('vNum').textContent = f.vers.length ? `（${f.cur + 1} / ${f.vers.length}版${f.vers[f.cur]?.fix ? '・修正：' + f.vers[f.cur].fix : ''}）` : '';
+  $('vNum').textContent = f.vers.length ? `（${f.cur + 1} / ${f.vers.length}版${f.vers[f.cur]?.fix ? '・修正：' + (/^The previous attempt MIXED/.test(f.vers[f.cur].fix) ? '左右を直す' : f.vers[f.cur].fix) : ''}）` : '';
   $('vPrev').disabled = f.cur <= 0; $('vNext').disabled = f.cur >= f.vers.length - 1; $('vDrop').disabled = f.cur < 0;
   $('descPre').textContent = describePose(i);
   if (!$('fState').textContent && (!S.sheet.ok)) setState('fState', '先に「1 三面図」で三面図を確定してください。', 'warn');
