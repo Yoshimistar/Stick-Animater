@@ -25,6 +25,14 @@
   #busy { color: var(--warn); font-size: 12px; }
   #costTot { margin-left: auto; font-size: 12px; padding: 4px 8px; }
   .est { font-size: 11px; opacity: .85; font-weight: normal; margin-left: 4px; }
+  button.web { background: #2f3b55; border-color: #4a6aa8; }
+  #webDlg { width: min(720px, calc(100vw - 24px)); max-height: calc(100vh - 24px); background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 14px; overflow: auto; }
+  #webDlg::backdrop { background: #000a; }
+  #webDlg ol { padding-left: 20px; margin: 6px 0; } #webDlg li { margin: 6px 0; }
+  #webImgs { display: flex; gap: 8px; flex-wrap: wrap; } #webImgs figure { margin: 0; text-align: center; font-size: 11px; color: var(--muted); }
+  #webImgs img { width: 96px; height: 96px; object-fit: contain; background: #fff2; border-radius: 6px; display: block; }
+  #webPrompt { width: 100%; height: 110px; font-size: 12px; }
+  #webPreview { max-width: 100%; max-height: 240px; display: block; margin: 6px auto; }
   table.cost { border-collapse: collapse; font-size: 13px; width: 100%; } table.cost td, table.cost th { border-bottom: 1px solid #ffffff22; padding: 4px 6px; text-align: right; } table.cost td:first-child, table.cost th:first-child { text-align: left; }
   main { padding: 12px; max-width: 1280px; margin: 0 auto; }
   button, .btn { display: inline-block; background: var(--panel2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
@@ -324,6 +332,22 @@
   </section>
 </main>
 
+<dialog id="webDlg">
+  <h3 style="margin-top:0" id="webTitle">Web の Gemini で作る</h3>
+  <ol>
+    <li>下の画像を<b>番号の順に</b>保存します。<div class="row"><button id="webSave" class="small">画像をまとめて保存</button><button id="webShare" class="small" hidden>共有（写真に保存／Geminiアプリへ）</button></div>
+      <div id="webImgs"></div><p class="hint">画像を長押しして「写真に保存」でもかまいません。</p></li>
+    <li>指示文をコピーします。<div class="row"><button id="webCopy" class="small">指示文をコピー</button><span id="webCopied" class="hint"></span></div>
+      <details><summary>指示文を見る</summary><textarea id="webPrompt" readonly></textarea></details></li>
+    <li><a id="webOpen" href="https://gemini.google.com/app" target="_blank" rel="noopener" style="color:var(--accent)">Gemini を開く</a>。画像を番号の順に添付し、指示文を貼り付けて送ります。画像を作るモデル（「画像を作成」）を選んでください。</li>
+    <li>できた画像を保存して、ここで読み込みます。
+      <div class="row"><label class="btn pri">できた画像を読み込む<input type="file" id="webFile" accept="image/*" hidden></label><button id="webPaste" class="small">コピーした画像を貼り付け</button></div>
+      <img id="webPreview" alt="" hidden></li>
+  </ol>
+  <p id="webState" class="state"></p>
+  <div class="row"><button id="webOk" class="pri" disabled>この画像を使う</button><span class="sp"></span><button id="webCancel">やめる</button></div>
+</dialog>
+
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
@@ -430,7 +454,7 @@ function updateEstimates() {
   estLabel('standGen', `約${yen(callUSD(nIn) * n)}〜${yen(callUSD(nIn) * n * 2)}`);
   estLabel('standFixBtn', `約${yen(callUSD(nIn + 1))}`);
   estLabel('sheetGen', `約${yen(callUSD(1))}（切り分け失敗時 最大${yen(callUSD(1) + callUSD(2) * 4)}）`);
-  document.querySelectorAll('#views .view button').forEach(b => { let e = b.querySelector('.est'); const t = `約${yen(callUSD(2))}`; if (!e) { e = document.createElement('span'); e.className = 'est'; b.appendChild(e); } if (e.textContent !== t) e.textContent = t; });
+  document.querySelectorAll('#views .view button.redo').forEach(b => { let e = b.querySelector('.est'); const t = `約${yen(callUSD(2))}`; if (!e) { e = document.createElement('span'); e.className = 'est'; b.appendChild(e); } if (e.textContent !== t) e.textContent = t; });
   const k = framesToGen();
   estLabel('fGen', `約${yen(one)}`);
   estLabel('fAll', k ? `${k}枚 約${yen(framesUSD(S.frames.filter(f => f.cur < 0 || isStale(f))))}` : '0枚');
@@ -445,7 +469,53 @@ $('aspect').addEventListener('change', () => { saveSettings(); });
 // ---------- Gemini ----------
 let busyN = 0;
 function busy(d) { busyN += d; $('busy').textContent = busyN > 0 ? '生成中…' : ''; }
+// ---------- Web の Gemini で手作業で作る ----------
+let WEB = false, webQ = Promise.resolve(), webLabel = '';
+const ASPECT_PX = { '1:1': '1024x1024', '2:3': '832x1248', '3:4': '896x1200', '4:3': '1200x896', '21:9': '1536x658' };
+function webCall(parts, aspect, signal) {
+  const run = () => new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new DOMException('aborted', 'AbortError'));
+    const dlg = $('webDlg'), imgs = parts.filter(p => typeof p !== 'string'), files = imgs.map((p, i) => {
+      const bin = atob(p.data), u8 = new Uint8Array(bin.length); for (let k = 0; k < bin.length; k++) u8[k] = bin.charCodeAt(k);
+      return new File([u8], `${String(i + 1).padStart(2, '0')}_stick.${p.mime.includes('jpeg') ? 'jpg' : 'png'}`, { type: p.mime });
+    });
+    const text = parts.filter(p => typeof p === 'string').join('\n') + `\n\nThe ${imgs.length} attached images are IMAGE 1 to IMAGE ${imgs.length} in order (file names 01, 02, ...). Make the output image aspect ratio ${aspect} (about ${ASPECT_PX[aspect] || ''} px). Output only the image.`;
+    $('webTitle').textContent = 'Web の Gemini で作る' + (webLabel ? `：${webLabel}` : '');
+    $('webPrompt').value = text; $('webCopied').textContent = ''; $('webPreview').hidden = true; $('webOk').disabled = true; setState('webState', '');
+    const W = $('webImgs'); W.innerHTML = '';
+    imgs.forEach((p, i) => { const f = document.createElement('figure'); f.innerHTML = `<img alt=""><figcaption>${i + 1}</figcaption>`; f.querySelector('img').src = `data:${p.mime};base64,${p.data}`; W.appendChild(f); });
+    $('webShare').hidden = !(navigator.canShare && navigator.canShare({ files }));
+    let got = null;
+    const accept = async url => { try { await loadImage(url); got = url; $('webPreview').src = url; $('webPreview').hidden = false; $('webOk').disabled = false; setState('webState', '読み込みました。よければ「この画像を使う」を押してください。', 'ok'); } catch { setState('webState', '画像として読み込めませんでした', 'err'); } };
+    $('webSave').onclick = async () => { for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); await new Promise(r => setTimeout(r, 400)); } };
+    $('webShare').onclick = () => navigator.share({ files }).catch(() => {});
+    $('webCopy').onclick = async () => { try { await navigator.clipboard.writeText(text); $('webCopied').textContent = 'コピーしました'; } catch { $('webPrompt').closest('details').open = true; $('webPrompt').select(); $('webCopied').textContent = '自動でコピーできないので、表示した文を選んでコピーしてください'; } };
+    $('webFile').value = ''; $('webFile').onchange = async e => { const f = e.target.files[0]; if (f) accept(await fileToDataURL(f)); };
+    $('webPaste').onclick = async () => {
+      try { for (const it of await navigator.clipboard.read()) { const t = it.types.find(t => t.startsWith('image/')); if (t) return accept(await fileToDataURL(await it.getType(t))); } setState('webState', 'クリップボードに画像がありません', 'warn'); }
+      catch { setState('webState', 'クリップボードを読めませんでした。画像を保存して「読み込む」を使ってください', 'warn'); }
+    };
+    const done = (ok) => { dlg.close(); signal?.removeEventListener('abort', onAbort); ok ? resolve(got) : reject(Object.assign(new Error('Web での生成をやめました'), { name: 'AbortError' })); };
+    const onAbort = () => done(false);
+    signal?.addEventListener('abort', onAbort);
+    $('webOk').onclick = () => done(true); $('webCancel').onclick = () => done(false);
+    dlg.oncancel = e => { e.preventDefault(); done(false); };
+    dlg.showModal();
+  });
+  const p = webQ.then(run, run); webQ = p.catch(() => {}); return p;
+}
+// API ボタンの隣に「Webで作る」ボタンを置く。押すと WEB=true の間だけ、生成が手作業の受け渡しになる
+async function viaWeb(fn, label) {
+  if (WEB) return; WEB = true; webLabel = label || '';
+  try { await fn(); } finally { WEB = false; webLabel = ''; }
+}
+function addWebBtn(id, label) {
+  const b = $(id), w = document.createElement('button'); w.className = 'web' + (b.classList.contains('small') ? ' small' : ''); w.id = id + 'Web'; w.textContent = 'Webで作る';
+  w.title = 'API を使わず、Web の Gemini（無料枠）で手作業で作ります';
+  w.onclick = () => viaWeb(() => b.onclick(), label); b.after(w); return w;
+}
 async function callGemini(parts, aspect, signal) {
+  if (WEB) return webCall(parts, aspect, signal);
   const st = settings();
   if (MOCK) { const url = await mockGemini(parts, aspect, signal); const p = priceOf(st.model); addUsage({ promptTokenCount: parts.filter(x => typeof x !== 'string').length * p.inImg + 600, candidatesTokenCount: p.img + p.think, thoughtsTokenCount: 0, candidatesTokensDetails: [{ modality: 'IMAGE', tokenCount: p.img }] }, st.model, true); return url; }
   if (!st.key) throw new Error('「⚙ AI設定」に Gemini API キーを入力してください');
@@ -611,12 +681,12 @@ async function genStandOnce(parts, signal) {
   for (let t = 0; t < 2; t++) {
     const url = await callGemini(parts, '2:3', signal), k = chromaKey(await loadImage(url));
     const cut = touchesEdge(k);
-    if (!cut || t === 1) return { url, cut };
+    if (!cut || t === 1 || WEB) return { url, cut };
   }
 }
 $('standGen').onclick = async () => {
   if (!S.inputs.length) return setState('standState', 'イメージ画像を読み込んでください', 'err');
-  const n = settings().n; setState('standState', `立ち絵の候補を${n}枚作っています…`); busy(1); $('standGen').disabled = true;
+  const n = WEB ? 1 : settings().n; setState('standState', `立ち絵の候補を${n}枚作っています…`); busy(1); $('standGen').disabled = true;
   try {
     const parts = [standPrompt(), ...(await inputParts())];
     const rs = await Promise.allSettled(Array.from({ length: n }, () => genStandOnce(parts)));
@@ -736,8 +806,10 @@ $('sheetGen').onclick = async () => {
       setState('sheetState', '4つの向きに切り分けました。');
     } else {
       setState('sheetState', `シートから4人をうまく切り分けられなかったので（${runs.length}人に見えました）、1向きずつ作り直しています…`, 'warn');
+      if (WEB && !confirm(`シートから4人に切り分けられませんでした（${runs.length}人に見えました）。\n1向きずつ Web で作りますか？（あと最大4回の受け渡し）`)) throw new Error('切り分けられませんでした。もう一度「三面図を作る」を試してください');
       for (const v of VIEWS) {
         if ($('mirror').checked && v.k === 'left') continue;
+        if (WEB) webLabel = v.ja;
         const r = await genView(v); S.sheet.views[v.k] = r.url; S.sheet.hs[v.k] = r.h; renderP1();
       }
       setState('sheetState', '1向きずつ作りました。');
@@ -767,10 +839,11 @@ function renderP1() {
   const V = $('views'); V.innerHTML = '';
   for (const v of VIEWS) {
     const d = document.createElement('div'); d.className = 'view' + (S.sheet.flags?.[v.k] ? ' flag' : '');
-    d.innerHTML = `<b>${v.ja}</b><img alt=""><input type="text" placeholder="直したいこと"><button class="small">作り直す</button>`;
+    d.innerHTML = `<b>${v.ja}</b><img alt=""><input type="text" placeholder="直したいこと"><div class="row" style="margin:0;gap:4px"><button class="small redo">作り直す</button><button class="small web">Webで</button></div>`;
     const im = d.querySelector('img'); if (S.sheet.views[v.k]) im.src = S.sheet.views[v.k]; else im.removeAttribute('src');
-    d.querySelector('button').disabled = !S.stand;
-    d.querySelector('button').onclick = () => redoView(v, d.querySelector('input').value.trim());
+    d.querySelector('button.redo').disabled = d.querySelector('button.web').disabled = !S.stand;
+    d.querySelector('button.redo').onclick = () => redoView(v, d.querySelector('input').value.trim());
+    d.querySelector('button.web').onclick = () => viaWeb(() => redoView(v, d.querySelector('input').value.trim()), v.ja);
     V.appendChild(d);
   }
   $('sheetRaw').hidden = !S.sheet.raw; if (S.sheet.raw) $('sheetRaw').src = S.sheet.raw;
@@ -1212,7 +1285,7 @@ function needSheet() {
   if (!S.sheet.ok || VIEWS.some(v => !S.sheet.views[v.k])) { setState('fState', '先に「1 三面図」で三面図を確定してください', 'err'); return true; }
   return false;
 }
-const GEN_BTNS = ['fGen', 'fAll', 'fRedo', 'fFixBtn', 'fSwap'];
+const GEN_BTNS = ['fGen', 'fAll', 'fRedo', 'fFixBtn', 'fSwap', 'fGenWeb', 'fAllWeb', 'fFixBtnWeb', 'fSwapWeb'];
 async function runFrames(list, fix) {
   if (needSheet() || !list.length) { if (!list.length) setState('fState', '生成するコマはありません（すべて生成済みです）', 'ok'); return; }
   abort = new AbortController(); $('fStop').hidden = false; GEN_BTNS.forEach(id => $(id).disabled = true); busy(1);
@@ -1220,6 +1293,7 @@ async function runFrames(list, fix) {
   for (const i of list) {
     if (abort.signal.aborted) break;
     setState('fState', `${i + 1}コマ目を生成しています…（${done + 1} / ${list.length}）`); S.fi = i; renderP3();
+    if (WEB) webLabel = `${i + 1}コマ目（${done + 1} / ${list.length}）`;
     try { await genFrame(i, fix); done++; } catch (e) { if (e.name === 'AbortError') break; err = e; }
     renderP3();
   }
@@ -1228,11 +1302,11 @@ async function runFrames(list, fix) {
 }
 const isStale = f => { const v = f.vers[f.cur]; return v && (v.sig !== sigOf(f) || v.sheet !== S.sheet.id); };
 $('fGen').onclick = () => runFrames([S.fi]);
-$('fAll').onclick = () => { const list = S.frames.map((f, i) => (f.cur < 0 || isStale(f)) ? i : -1).filter(i => i >= 0); if (list.length >= 3 && !confirm(`${list.length}コマを生成します。目安は 約${yen(framesUSD(list.map(i => S.frames[i])))} です。続けますか？`)) return; runFrames(list); };
-$('fRedo').onclick = () => { if (confirm(`全${S.frames.length}コマを作り直しますか？（今の版も残ります）\n目安：約${yen(framesUSD(S.frames))}`)) runFrames(S.frames.map((_, i) => i)); };
+$('fAll').onclick = () => { const list = S.frames.map((f, i) => (f.cur < 0 || isStale(f)) ? i : -1).filter(i => i >= 0); if (list.length >= 3 && !WEB && !confirm(`${list.length}コマを生成します。目安は 約${yen(framesUSD(list.map(i => S.frames[i])))} です。続けますか？`)) return; return runFrames(list); };
+$('fRedo').onclick = () => { if (confirm(`全${S.frames.length}コマを作り直しますか？（今の版も残ります）` + (WEB ? '' : `\n目安：約${yen(framesUSD(S.frames))}`))) return runFrames(S.frames.map((_, i) => i)); };
 $('fStop').onclick = () => abort?.abort();
-$('fFixBtn').onclick = () => { const fix = $('fFix').value.trim(); if (!fix) return setState('fState', '直したいことを書いてください', 'err'); if (curF().cur < 0) return setState('fState', '先に一度生成してください', 'err'); $('fFix').value = ''; runFrames([S.fi], fix); };
-$('fSwap').onclick = () => { if (curF().cur < 0) return setState('fState', '先に一度生成してください', 'err'); runFrames([S.fi], 'The previous attempt MIXED UP LEFT AND RIGHT limbs. Check every arm and leg against the mannequin colors (red = character\'s right, blue = character\'s left) and against the "How it looks IN THE PICTURE" list, and fix which arm/leg is doing what. Keep the same overall pose and camera angle.'); };
+$('fFixBtn').onclick = () => { const fix = $('fFix').value.trim(); if (!fix) return setState('fState', '直したいことを書いてください', 'err'); if (curF().cur < 0) return setState('fState', '先に一度生成してください', 'err'); $('fFix').value = ''; return runFrames([S.fi], fix); };
+$('fSwap').onclick = () => { if (curF().cur < 0) return setState('fState', '先に一度生成してください', 'err'); return runFrames([S.fi], 'The previous attempt MIXED UP LEFT AND RIGHT limbs. Check every arm and leg against the mannequin colors (red = character\'s right, blue = character\'s left) and against the "How it looks IN THE PICTURE" list, and fix which arm/leg is doing what. Keep the same overall pose and camera angle.'); };
 $('vPrev').onclick = () => { const f = curF(); if (f.cur > 0) { f.cur--; save(); renderP3(); } };
 $('vNext').onclick = () => { const f = curF(); if (f.cur < f.vers.length - 1) { f.cur++; save(); renderP3(); } };
 $('vDrop').onclick = () => { const f = curF(); if (f.cur < 0) return; f.vers.splice(f.cur, 1); f.cur = Math.min(f.cur, f.vers.length - 1); save(); renderP3(); };
@@ -1317,6 +1391,7 @@ const setHH = () => document.documentElement.style.setProperty('--hh', document.
 window.__dev = { get S() { return S; }, renderP2, renderP3, solvePose, describePose, viewsFor, splitSheet, lerpPose, PS };
 (async () => {
   loadSettings(); renderCost();
+  [['standGen', '立ち絵'], ['standFixBtn', '立ち絵の修正'], ['sheetGen', '三面図'], ['fGen', 'このコマ'], ['fAll', '未生成のコマ'], ['fFixBtn', 'コマの修正'], ['fSwap', '左右を直す']].forEach(([id, l]) => addWebBtn(id, l));
   try { const s = await DB.get('cur'); if (s && !/[?&]fresh/.test(location.search)) S = Object.assign(freshState(), JSON.parse(s)); } catch {}
   fixState(); show(S.stand ? (S.sheet.ok ? '2' : '1') : '0');
 })();
