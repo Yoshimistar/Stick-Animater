@@ -67,6 +67,7 @@
   .view img { width: 100%; aspect-ratio: 3 / 5; object-fit: contain; background: #0006; border-radius: 6px; display: block; }
   .view b { display: block; margin-bottom: 4px; }
   .view input { width: 100%; margin: 6px 0; }
+  #spText { width: 100%; height: 170px; font-size: 13px; }
   #pmText { width: 100%; height: 170px; font-size: 13px; }
   .p2 { display: grid; grid-template-columns: 150px 1fr; gap: 12px; }
   .flist { display: flex; flex-direction: column; gap: 6px; }
@@ -157,6 +158,15 @@
           <button id="standGen" class="pri">立ち絵を作る</button>
           <button id="standDirect">1枚目をそのまま使う</button>
         </div>
+        <details id="spBox" open><summary>Gemini（Web）で作るためのプロンプト</summary>
+          <div class="row">
+            <select id="spLang"><option value="ja">日本語</option><option value="en">English</option></select>
+            <button id="spCopy">コピー</button><span id="spCopied" class="hint"></span>
+            <span class="sp"></span><a href="https://gemini.google.com/app" target="_blank" rel="noopener" style="color:var(--accent)">Gemini を開く</a>
+          </div>
+          <textarea id="spText" readonly></textarea>
+          <p class="hint">イメージ画像を添付して、この文を貼り付けて送ります。「立ち姿の型」と「補足メモ」の内容も入ります。できた画像は右の「画像を候補に読み込む」「画像を貼り付け」で入れてください。</p>
+        </details>
       </div>
       <div class="card">
         <h3>候補（タップで選ぶ）</h3>
@@ -166,7 +176,7 @@
           <input type="text" id="standFix" placeholder="直したいこと（例：腕輪を金色に）">
           <button id="standFixBtn">この候補を修正</button>
         </div>
-        <div class="row"><label class="btn small">画像を候補に読み込む<input type="file" id="standFile" accept="image/*" hidden></label><button id="standPaste" class="small">画像を貼り付け</button></div>
+        <div class="row"><label class="btn">画像を候補に読み込む<input type="file" id="standFile" accept="image/*" hidden></label><button id="standPaste">画像を貼り付け</button></div>
         <div class="row"><button id="standOk" class="pri">この立ち絵で確定</button></div>
         <p id="standState" class="state"></p>
       </div>
@@ -654,7 +664,7 @@ async function addInputs(urls) {
 $('inFile').onchange = async e => { const fs = [...e.target.files]; e.target.value = ''; await addInputs(await Promise.all(fs.map(fileToDataURL))); };
 $('useSample').onclick = () => { S.inputs = []; addInputs(['solar.jpg']); };
 $('poseType').onchange = () => { S.poseType = $('poseType').value; save(); };
-$('memo').onchange = () => { S.memo = $('memo').value; save(); };
+$('memo').onchange = $('memo').oninput = () => { S.memo = $('memo').value; save(); };
 let cropImg = null, cropSrc = null, drag = null;
 async function drawCrop() {
   const cv = $('cropCv'); cv.hidden = !S.inputs.length; $('cropClear').hidden = !S.crop; if (!S.inputs.length) return;
@@ -736,6 +746,26 @@ $('standFixBtn').onclick = async () => {
 function putStand(url, how) { S.cands.push({ id: uid(), url, how }); S.sel = S.cands.length - 1; save(); renderP0(); setState('standState', '画像を候補に入れました。これでよければ「確定」してください。'); }
 $('standFile').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (f) putStand(await fileToDataURL(f), '読み込み'); };
 $('standPaste').onclick = async () => { const u = await clipImage('standState'); if (u) putStand(u, '貼り付け'); };
+const POSE_JA = { A: '両腕を体から少し離して下ろした、まっすぐな立ち姿（Aポーズ）。足は肩幅くらいに開く', K: '気をつけの姿勢。腕は体の横にまっすぐ下ろし、足をそろえる', M: '元の絵の雰囲気を残した、自然で落ち着いた立ち姿。腕や脚が体と重なりすぎないようにする' };
+function standPromptJa() {
+  return [
+    `添付した画像${S.inputs.length > 1 ? '（複数）' : ''}のキャラクターで、アニメ制作用のきれいな全身の立ち絵を1枚描いてください。`,
+    '・顔、髪型、衣装、色、アクセサリーは添付の絵と同じキャラクターにし、画風、線の太さ、塗り方も同じにしてください。',
+    `・ポーズ：${POSE_JA[S.poseType] || POSE_JA.A}`,
+    '・頭のてっぺん（帽子・髪・羽も含む）から足先まで全身を入れ、上下に少し余白を空けてください。どこも切れないようにしてください。',
+    '・正面向き。光は均一にし、影、地面、床の小物、文字やラベルは入れないでください。',
+    '・背景は無地の純粋な緑（#00FF00）だけにしてください。',
+    S.memo ? `・補足：${S.memo}` : '',
+    '・キャラクターは1人だけ、中央に。縦長（2:3）の画像で出力してください。',
+  ].filter(Boolean).join('\n');
+}
+function renderStandPrompt() {
+  const t = $('spLang').value === 'en' ? standPrompt() + '\n- Output a tall image, aspect ratio 2:3.' : standPromptJa();
+  if ($('spText').value !== t) { $('spText').value = t; $('spCopied').textContent = ''; }
+}
+$('spLang').onchange = renderStandPrompt;
+['poseType', 'memo'].forEach(id => { $(id).addEventListener('input', () => setTimeout(renderStandPrompt)); $(id).addEventListener('change', () => setTimeout(renderStandPrompt)); });
+$('spCopy').onclick = async () => { renderStandPrompt(); try { await navigator.clipboard.writeText($('spText').value); $('spCopied').textContent = 'コピーしました'; } catch { $('spText').select(); $('spCopied').textContent = '選んだ文をコピーしてください'; } };
 $('standOk').onclick = () => {
   const c = S.cands[S.sel]; if (!c) return setState('standState', '先に候補を選んでください', 'err');
   if (S.standId === c.id) return show('1');
@@ -743,7 +773,7 @@ $('standOk').onclick = () => {
   setState('standState', '立ち絵を確定しました。「1 三面図」へ進んでください。', 'ok'); show('1');
 };
 function renderP0() {
-  $('poseType').value = S.poseType; $('memo').value = S.memo;
+  $('poseType').value = S.poseType; $('memo').value = S.memo; renderStandPrompt();
   const L = $('inList'); L.innerHTML = '';
   S.inputs.forEach((u, i) => { const d = document.createElement('div'); d.className = 't'; d.innerHTML = `<img alt=""><button class="x small" title="外す">×</button>`; d.querySelector('img').src = u;
     d.querySelector('button').onclick = () => { S.inputs.splice(i, 1); if (i === 0) S.crop = null; save(); renderP0(); }; L.appendChild(d); });
