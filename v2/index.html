@@ -512,7 +512,7 @@ $('aspect').addEventListener('change', () => { saveSettings(); });
 let busyN = 0;
 function busy(d) { busyN += d; $('busy').textContent = busyN > 0 ? '生成中…' : ''; }
 // ---------- Web の Gemini で手作業で作る ----------
-let WEB = false, webQ = Promise.resolve(), webLabel = '';
+let WEB = false, webQ = Promise.resolve(), webLabel = '', webTag = '';
 const ASPECT_PX = { '1:1': '1024x1024', '2:3': '832x1248', '3:4': '896x1200', '4:3': '1200x896', '16:9': '1376x768', '21:9': '1536x658' };
 function webCall(parts, aspect, signal) {
   const run = () => new Promise((resolve, reject) => {
@@ -529,7 +529,7 @@ function webCall(parts, aspect, signal) {
     $('webShare').hidden = !(navigator.canShare && navigator.canShare({ files }));
     const motion = files.filter((_, i) => imgs[i].motion);
     $('webSaveMotion').hidden = !motion.length;
-    $('webSaveMotion').onclick = () => motion.forEach(f => { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = `motion_${(webLabel || '').replace(/[\\/:*?"<>|（）()\s]/g, '') || 'image'}${motion.length > 1 ? '_' + f.name.slice(0, 2) : ''}.png`; a.click(); });
+    $('webSaveMotion').onclick = () => motion.forEach(f => { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = `motion_${webTag || 'image'}${motion.length > 1 ? '_' + f.name.slice(0, 2) : ''}.png`; a.click(); });
     let got = null;
     const accept = async url => { try { await loadImage(url); got = url; $('webPreview').src = url; $('webPreview').hidden = false; $('webOk').disabled = false; setState('webState', '読み込みました。よければ「この画像を使う」を押してください。', 'ok'); } catch { setState('webState', '画像として読み込めませんでした', 'err'); } };
     $('webSave').onclick = async () => { for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); await new Promise(r => setTimeout(r, 400)); } };
@@ -1452,7 +1452,7 @@ async function runFrames(list, fix) {
   for (const i of list) {
     if (abort.signal.aborted) break;
     setState('fState', `${i + 1}コマ目を生成しています…（${done + 1} / ${list.length}）`); S.fi = i; renderP3();
-    if (WEB) webLabel = `${i + 1}コマ目（${done + 1} / ${list.length}）`;
+    if (WEB) { webLabel = `${i + 1}コマ目（${done + 1} / ${list.length}）`; webTag = `frame${String(i + 1).padStart(2, '0')}`; }
     try { await genFrame(i, fix); done++; } catch (e) { if (e.name === 'AbortError') break; err = e; }
     renderP3();
   }
@@ -1523,6 +1523,7 @@ $('gGen').onclick = async () => {
   const list = gridList(); if (!list.length) return;
   busy(1); GEN_BTNS.forEach(id => $(id) && ($(id).disabled = true)); setState('fState', `${list[0] + 1}〜${list[list.length - 1] + 1}コマ目をまとめて1枚で生成しています…`);
   try {
+    webTag = `frames${list[0] + 1}-${list[list.length - 1] + 1}`;
     const parts = [gridPrompt(list), Object.assign(partOf(gridCanvas(list)), { motion: true }), partOf(await sheetOverview()), partOf(fitCanvas(await loadImage(S.stand), 1024))];
     const url = await callGemini(parts, GRID_ASPECT[settings().aspect] || '4:3', null, { size: '2K' });
     await splitGrid(url, list);
