@@ -376,8 +376,8 @@
 <dialog id="webDlg">
   <h3 style="margin-top:0" id="webTitle">Web の Gemini で作る</h3>
   <ol>
-    <li>下の画像を<b>番号の順に</b>保存します。<div class="row"><button id="webSave" class="small">画像をまとめて保存</button><button id="webShare" class="small" hidden>共有（写真に保存／Geminiアプリへ）</button></div>
-      <div id="webImgs"></div><p class="hint">画像を長押しして「写真に保存」でもかまいません。</p></li>
+    <li>下の画像を<b>番号の順に</b>保存します。<div class="row"><button id="webSave" class="small">画像をまとめて保存</button><button id="webSaveMotion" class="small" hidden>モーション画像だけ保存</button><button id="webShare" class="small" hidden>共有（写真に保存／Geminiアプリへ）</button></div>
+      <div id="webImgs"></div><p class="hint">画像を長押しして「写真に保存」でもかまいません。同じ Gemini の会話で続けて作るときは、三面図などは送ってあるので「モーション画像だけ保存」が便利です。</p></li>
     <li>指示文をコピーします。<div class="row"><button id="webCopy" class="small">指示文をコピー</button><span id="webCopied" class="hint"></span></div>
       <details><summary>指示文を見る</summary><textarea id="webPrompt" readonly></textarea></details></li>
     <li><a id="webOpen" href="https://gemini.google.com/app" target="_blank" rel="noopener" style="color:var(--accent)">Gemini を開く</a>。画像を番号の順に添付し、指示文を貼り付けて送ります。画像を作るモデル（「画像を作成」）を選んでください。</li>
@@ -527,6 +527,9 @@ function webCall(parts, aspect, signal) {
     const W = $('webImgs'); W.innerHTML = '';
     imgs.forEach((p, i) => { const f = document.createElement('figure'); f.innerHTML = `<img alt=""><figcaption>${i + 1}</figcaption>`; f.querySelector('img').src = `data:${p.mime};base64,${p.data}`; W.appendChild(f); });
     $('webShare').hidden = !(navigator.canShare && navigator.canShare({ files }));
+    const motion = files.filter((_, i) => imgs[i].motion);
+    $('webSaveMotion').hidden = !motion.length;
+    $('webSaveMotion').onclick = () => motion.forEach(f => { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = `motion_${(webLabel || '').replace(/[\\/:*?"<>|（）()\s]/g, '') || 'image'}${motion.length > 1 ? '_' + f.name.slice(0, 2) : ''}.png`; a.click(); });
     let got = null;
     const accept = async url => { try { await loadImage(url); got = url; $('webPreview').src = url; $('webPreview').hidden = false; $('webOk').disabled = false; setState('webState', '読み込みました。よければ「この画像を使う」を押してください。', 'ok'); } catch { setState('webState', '画像として読み込めませんでした', 'err'); } };
     $('webSave').onclick = async () => { for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); await new Promise(r => setTimeout(r, 400)); } };
@@ -1430,7 +1433,7 @@ let abort = null;
 async function genFrame(i, fix) {
   const f = S.frames[i], views = viewsFor(f.pose.yaw), prevI = [...Array(i).keys()].reverse().find(j => S.frames[j].cur >= 0);
   const withPrev = $('usePrev').checked && prevI !== undefined, cur = f.vers[f.cur];
-  const parts = [framePrompt(f, views, withPrev, fix || ''), partOf(manCanvas(f)), ...views.map(k => partOf(S.sheet.views[k])), partOf(await sheetOverview())];
+  const parts = [framePrompt(f, views, withPrev, fix || ''), Object.assign(partOf(manCanvas(f)), { motion: true }), ...views.map(k => partOf(S.sheet.views[k])), partOf(await sheetOverview())];
   if (withPrev) parts.push(partOf(fitCanvas(await loadImage(S.frames[prevI].vers[S.frames[prevI].cur].url), 1024)));
   if (fix && cur) parts.push(partOf(fitCanvas(await loadImage(cur.url), 1024)));
   const url = await callGemini(parts, settings().aspect, abort?.signal);
@@ -1520,7 +1523,7 @@ $('gGen').onclick = async () => {
   const list = gridList(); if (!list.length) return;
   busy(1); GEN_BTNS.forEach(id => $(id) && ($(id).disabled = true)); setState('fState', `${list[0] + 1}〜${list[list.length - 1] + 1}コマ目をまとめて1枚で生成しています…`);
   try {
-    const parts = [gridPrompt(list), partOf(gridCanvas(list)), partOf(await sheetOverview()), partOf(fitCanvas(await loadImage(S.stand), 1024))];
+    const parts = [gridPrompt(list), Object.assign(partOf(gridCanvas(list)), { motion: true }), partOf(await sheetOverview()), partOf(fitCanvas(await loadImage(S.stand), 1024))];
     const url = await callGemini(parts, GRID_ASPECT[settings().aspect] || '4:3', null, { size: '2K' });
     await splitGrid(url, list);
     setState('fState', `${list.length}コマ分を切り分けて、それぞれ新しい版にしました。`, 'ok');
