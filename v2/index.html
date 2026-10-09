@@ -23,6 +23,9 @@
   nav button { border-radius: 999px; }
   nav button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
   #busy { color: var(--warn); font-size: 12px; }
+  #costTot { margin-left: auto; font-size: 12px; padding: 4px 8px; }
+  .est { font-size: 11px; opacity: .85; font-weight: normal; margin-left: 4px; }
+  table.cost { border-collapse: collapse; font-size: 13px; width: 100%; } table.cost td, table.cost th { border-bottom: 1px solid #ffffff22; padding: 4px 6px; text-align: right; } table.cost td:first-child, table.cost th:first-child { text-align: left; }
   main { padding: 12px; max-width: 1280px; margin: 0 auto; }
   button, .btn { display: inline-block; background: var(--panel2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
     padding: 8px 12px; font: inherit; cursor: pointer; touch-action: manipulation; }
@@ -117,6 +120,7 @@
     <button data-p="s">⚙ AI設定</button>
   </nav>
   <span id="busy"></span>
+  <button id="costTot" class="small" title="これまでに使った金額（目安）"></button>
 </header>
 <main>
   <!-- 工程0 立ち絵 -->
@@ -296,12 +300,19 @@
       <h3>モデル</h3>
       <select id="genModel" style="width:100%">
         <option value="gemini-2.5-flash-image">gemini-2.5-flash-image（速い・安い）</option>
+        <option value="gemini-3.1-flash-image">gemini-3.1-flash-image（中くらい）</option>
         <option value="gemini-3-pro-image-preview">gemini-3-pro-image-preview（高品質）</option>
       </select>
+      <p id="modelPrice" class="hint"></p>
       <h3>立ち絵の候補の枚数</h3>
       <select id="candN"><option>1</option><option selected>2</option><option>3</option><option>4</option></select>
       <h3>コマの絵の形</h3>
       <select id="aspect"><option value="1:1">正方形（1:1）</option><option value="3:4">縦長（3:4）</option><option value="4:3">横長（4:3）</option></select>
+      <h3>料金の目安</h3>
+      <div class="row" style="margin-top:0"><span>1ドル＝</span><input type="number" id="yenRate" min="50" max="400" step="1" value="150" style="width:80px"><span>円で計算</span></div>
+      <div id="costTable"></div>
+      <div class="row"><button id="costReset" class="small">累計を0にする</button></div>
+      <p class="hint">金額は Google の公開料金（2026年10月時点）と、Gemini が返す実際のトークン数から計算した目安です。正確な請求額は Google AI Studio / Google Cloud の請求画面で確認してください。無料枠の範囲なら実際には請求されません。</p>
       <h3>データ</h3>
       <div class="row">
         <button id="saveProj">ファイルに保存</button>
@@ -361,14 +372,82 @@ function saveSettings() {
   localStorage.setItem('sa2_opt', JSON.stringify({ n: $('candN').value, aspect: $('aspect').value }));
 }
 ['genKey', 'genModel', 'candN'].forEach(id => $(id).addEventListener('change', saveSettings));
+
+// ---------- 料金の目安 ----------
+// 公開料金（USD）。in＝入力 1M トークン、out＝画像出力 1M トークン、txt＝文字・思考出力 1M トークン、
+// img＝画像1枚の出力トークン（1K）、inImg＝入力画像1枚のトークン、think＝思考トークンの目安
+const PRICE = {
+  'gemini-2.5-flash-image':     { in: 0.30, out: 30,  txt: 2.5, img: 1290, inImg: 1290, think: 0 },
+  'gemini-3.1-flash-image':     { in: 0.50, out: 60,  txt: 3,   img: 1120, inImg: 560,  think: 200 },
+  'gemini-3-pro-image-preview': { in: 2.00, out: 120, txt: 12,  img: 1120, inImg: 560,  think: 300 },
+};
+const priceOf = m => PRICE[m] || PRICE['gemini-3-pro-image-preview'];
+function yenRate() { return Math.max(1, +$('yenRate').value || 150); }
+// 1回の生成（入力画像 nIn 枚）の見込み額（USD）
+function callUSD(nIn, model = settings().model) {
+  const p = priceOf(model);
+  return ((nIn * p.inImg + 600) * p.in + p.img * p.out + p.think * p.txt) / 1e6;
+}
+function yen(usd) { const y = usd * yenRate(); return y < 10 ? `¥${y.toFixed(1)}` : `¥${Math.round(y).toLocaleString()}`; }
+// 実際に使った分（この端末の累計）
+let COST = { usd: 0, n: 0, by: {}, since: Date.now() };
+try { const o = JSON.parse(localStorage.getItem('sa2_cost') || 'null'); if (o && typeof o.usd === 'number') COST = o; } catch {}
+function usageUSD(u, model) {
+  const p = priceOf(model);
+  if (!u) return callUSD(3, model);
+  const imgTok = (u.candidatesTokensDetails || []).filter(d => d.modality === 'IMAGE').reduce((a, d) => a + (d.tokenCount || 0), 0) || p.img;
+  const txtTok = Math.max(0, (u.candidatesTokenCount || 0) - imgTok) + (u.thoughtsTokenCount || 0);
+  return ((u.promptTokenCount || 0) * p.in + imgTok * p.out + txtTok * p.txt) / 1e6;
+}
+function addUsage(u, model, gotImage) {
+  const usd = usageUSD(u, model), b = COST.by[model] || (COST.by[model] = { n: 0, usd: 0, fail: 0 });
+  COST.usd += usd; b.usd += usd; if (gotImage) { COST.n++; b.n++; } else b.fail++;
+  try { localStorage.setItem('sa2_cost', JSON.stringify(COST)); } catch {}
+  renderCost();
+}
+function renderCost() {
+  $('costTot').textContent = `使った額 約${yen(COST.usd)}`;
+  const rows = Object.entries(COST.by).map(([m, b]) => `<tr><td>${m}</td><td>${b.n}枚${b.fail ? `（失敗${b.fail}）` : ''}</td><td>${yen(b.usd)}</td><td>$${b.usd.toFixed(3)}</td></tr>`).join('');
+  $('costTable').innerHTML = `<table class="cost"><tr><th>モデル</th><th>枚数</th><th>円</th><th>ドル</th></tr>${rows || '<tr><td colspan="4" style="text-align:left">まだ使っていません</td></tr>'}<tr><th>合計</th><th>${COST.n}枚</th><th>${yen(COST.usd)}</th><th>$${COST.usd.toFixed(3)}</th></tr></table><p class="hint">${new Date(COST.since).toLocaleDateString()} から（この端末だけの集計）</p>`;
+  const m = settings().model, p = priceOf(m);
+  $('modelPrice').textContent = `このモデルは 1枚 約${yen(callUSD(3, m))}（画像出力 $${(p.img * p.out / 1e6).toFixed(3)}＋入力）。` + Object.keys(PRICE).filter(k => k !== m).map(k => `${k.replace('gemini-', '')}：約${yen(callUSD(3, k))}`).join('、');
+}
+$('costTot').onclick = () => show('s');
+$('costReset').onclick = () => { if (!confirm('使った額の累計を0にしますか？')) return; COST = { usd: 0, n: 0, by: {}, since: Date.now() }; try { localStorage.setItem('sa2_cost', JSON.stringify(COST)); } catch {} renderCost(); };
+$('yenRate').addEventListener('change', () => { try { localStorage.setItem('sa2_yen', $('yenRate').value); } catch {} renderCost(); updateEstimates(); });
+try { const y = localStorage.getItem('sa2_yen'); if (y) $('yenRate').value = y; } catch {}
+// ボタンに見積もりを添える
+function estLabel(id, txt) {
+  const b = $(id); if (!b) return;
+  let e = b.querySelector('.est'); if (!e) { e = document.createElement('span'); e.className = 'est'; b.appendChild(e); }
+  if (e.textContent !== txt) e.textContent = txt;
+}
+function framesToGen() { return S.frames.filter(f => f.cur < 0 || isStale(f)).length; }
+function frameInputs(f = S.frames[S.fi]) { return 2 + (f?.pose ? viewsFor(f.pose.yaw).length : 1) + ($('usePrev').checked ? 1 : 0); }
+const framesUSD = list => list.reduce((a, f) => a + callUSD(frameInputs(f)), 0);
+function updateEstimates() {
+  const n = settings().n, nIn = Math.max(1, S.inputs.length), one = callUSD(frameInputs());
+  estLabel('standGen', `約${yen(callUSD(nIn) * n)}〜${yen(callUSD(nIn) * n * 2)}`);
+  estLabel('standFixBtn', `約${yen(callUSD(nIn + 1))}`);
+  estLabel('sheetGen', `約${yen(callUSD(1))}（切り分け失敗時 最大${yen(callUSD(1) + callUSD(2) * 4)}）`);
+  document.querySelectorAll('#views .view button').forEach(b => { let e = b.querySelector('.est'); const t = `約${yen(callUSD(2))}`; if (!e) { e = document.createElement('span'); e.className = 'est'; b.appendChild(e); } if (e.textContent !== t) e.textContent = t; });
+  const k = framesToGen();
+  estLabel('fGen', `約${yen(one)}`);
+  estLabel('fAll', k ? `${k}枚 約${yen(framesUSD(S.frames.filter(f => f.cur < 0 || isStale(f))))}` : '0枚');
+  estLabel('fRedo', `${S.frames.length}枚 約${yen(framesUSD(S.frames))}`);
+  estLabel('fFixBtn', `約${yen(callUSD(frameInputs() + 1))}`);
+  estLabel('fSwap', `約${yen(callUSD(frameInputs() + 1))}`);
+}
+['genModel', 'candN', 'usePrev'].forEach(id => $(id).addEventListener('change', () => { renderCost(); updateEstimates(); }));
+setInterval(() => { try { updateEstimates(); } catch {} }, 1000);
 $('aspect').addEventListener('change', () => { saveSettings(); });
 
 // ---------- Gemini ----------
 let busyN = 0;
 function busy(d) { busyN += d; $('busy').textContent = busyN > 0 ? '生成中…' : ''; }
 async function callGemini(parts, aspect, signal) {
-  if (MOCK) return mockGemini(parts, aspect, signal);
   const st = settings();
+  if (MOCK) { const url = await mockGemini(parts, aspect, signal); const p = priceOf(st.model); addUsage({ promptTokenCount: parts.filter(x => typeof x !== 'string').length * p.inImg + 600, candidatesTokenCount: p.img + p.think, thoughtsTokenCount: 0, candidatesTokensDetails: [{ modality: 'IMAGE', tokenCount: p.img }] }, st.model, true); return url; }
   if (!st.key) throw new Error('「⚙ AI設定」に Gemini API キーを入力してください');
   const body = { contents: [{ role: 'user', parts: parts.map(p => typeof p === 'string' ? { text: p } : { inline_data: { mime_type: p.mime, data: p.data } }) }],
     generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: aspect } } };
@@ -382,6 +461,7 @@ async function callGemini(parts, aspect, signal) {
     const json = await res.json().catch(() => ({}));
     if (res.ok) {
       const cand = json.candidates?.[0], out = cand?.content?.parts || [], img = out.find(p => p.inlineData || p.inline_data);
+      addUsage(json.usageMetadata, st.model, !!img);
       if (img) { const d = img.inlineData || img.inline_data; return `data:${d.mimeType || d.mime_type || 'image/png'};base64,${d.data}`; }
       const txt = out.map(p => p.text).filter(Boolean).join(' ');
       lastErr = new Error('画像が返りませんでした' + (cand?.finishReason ? `（${cand.finishReason}）` : '') + (txt ? '：' + txt.slice(0, 120) : ''));
@@ -1148,8 +1228,8 @@ async function runFrames(list, fix) {
 }
 const isStale = f => { const v = f.vers[f.cur]; return v && (v.sig !== sigOf(f) || v.sheet !== S.sheet.id); };
 $('fGen').onclick = () => runFrames([S.fi]);
-$('fAll').onclick = () => runFrames(S.frames.map((f, i) => (f.cur < 0 || isStale(f)) ? i : -1).filter(i => i >= 0));
-$('fRedo').onclick = () => { if (confirm(`全${S.frames.length}コマを作り直しますか？（今の版も残ります）`)) runFrames(S.frames.map((_, i) => i)); };
+$('fAll').onclick = () => { const list = S.frames.map((f, i) => (f.cur < 0 || isStale(f)) ? i : -1).filter(i => i >= 0); if (list.length >= 3 && !confirm(`${list.length}コマを生成します。目安は 約${yen(framesUSD(list.map(i => S.frames[i])))} です。続けますか？`)) return; runFrames(list); };
+$('fRedo').onclick = () => { if (confirm(`全${S.frames.length}コマを作り直しますか？（今の版も残ります）\n目安：約${yen(framesUSD(S.frames))}`)) runFrames(S.frames.map((_, i) => i)); };
 $('fStop').onclick = () => abort?.abort();
 $('fFixBtn').onclick = () => { const fix = $('fFix').value.trim(); if (!fix) return setState('fState', '直したいことを書いてください', 'err'); if (curF().cur < 0) return setState('fState', '先に一度生成してください', 'err'); $('fFix').value = ''; runFrames([S.fi], fix); };
 $('fSwap').onclick = () => { if (curF().cur < 0) return setState('fState', '先に一度生成してください', 'err'); runFrames([S.fi], 'The previous attempt MIXED UP LEFT AND RIGHT limbs. Check every arm and leg against the mannequin colors (red = character\'s right, blue = character\'s left) and against the "How it looks IN THE PICTURE" list, and fix which arm/leg is doing what. Keep the same overall pose and camera angle.'); };
@@ -1236,7 +1316,7 @@ function fixState() {
 const setHH = () => document.documentElement.style.setProperty('--hh', document.querySelector('header').offsetHeight + 'px'); addEventListener('resize', setHH); setHH();
 window.__dev = { get S() { return S; }, renderP2, renderP3, solvePose, describePose, viewsFor, splitSheet, lerpPose, PS };
 (async () => {
-  loadSettings();
+  loadSettings(); renderCost();
   try { const s = await DB.get('cur'); if (s && !/[?&]fresh/.test(location.search)) S = Object.assign(freshState(), JSON.parse(s)); } catch {}
   fixState(); show(S.stand ? (S.sheet.ok ? '2' : '1') : '0');
 })();
