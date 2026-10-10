@@ -9,3 +9,4 @@
 - 画像生成は棒人間のシルエットと照合し、ずれていれば違いを示して自動で作り直します（回数は「AI の設定」で変更可）
 - 旧版（v1：棒人間＋Gemini清書方式）は v1/ に保存：https://yoshimistar.github.io/Stick-Animater/v1/
 - v2 検証版（立ち絵→三面図→3Dデッサン人形のポーズから生成）：https://yoshimistar.github.io/Stick-Animater/v2/
+- v3/（ブランチ v3）：v2 に「格闘ゲームの構え（右向き）」の全身元絵モードを追加（キャラのプリセット v3/fighters.js、背景色、A/B プロンプト、自動チェック、PNG 保存）
